@@ -1,51 +1,96 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { addSwipe, getGoal, getSwipes, setGoal } = require("../src/store/memoryStore");
+const {
+  addSwipe,
+  clearStore,
+  getGoal,
+  getSwipes,
+  setGoal,
+} = require("../src/store/memoryStore");
 
-test("memory store saves and replaces one current goal per user", () => {
-  const userId = `user-${Date.now()}-goal`;
+test.beforeEach(clearStore);
+test.afterEach(clearStore);
 
-  setGoal(userId, "high protein", { minProtein_g: 30 });
-  const firstGoal = getGoal(userId);
+test("memory store saves, replaces, and isolates goals by user", () => {
+  setGoal("user-a", "high protein", { minProtein_g: 30 });
+  setGoal("user-b", "vegan", { diet: "vegan" });
 
+  const firstGoal = getGoal("user-a");
   assert.equal(firstGoal.rawText, "high protein");
   assert.deepEqual(firstGoal.parsedFilter, { minProtein_g: 30 });
   assert.match(firstGoal.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(getGoal("missing"), null);
 
-  setGoal(userId, "vegan", { diet: "vegan" });
+  setGoal("user-a", "quick", { maxReadyTime: 20 });
+  assert.equal(getGoal("user-a").rawText, "quick");
+  assert.deepEqual(getGoal("user-a").parsedFilter, { maxReadyTime: 20 });
+  assert.equal(getGoal("user-b").rawText, "vegan");
+});
 
-  assert.deepEqual(getGoal(userId), {
-    rawText: "vegan",
-    parsedFilter: { diet: "vegan" },
-    updatedAt: getGoal(userId).updatedAt,
+test("memory store clones goal values on write and read", () => {
+  const parsedFilter = { diet: "vegan", excludeIngredients: ["peanuts"] };
+  setGoal("user-a", "vegan without peanuts", parsedFilter);
+
+  parsedFilter.diet = "paleo";
+  parsedFilter.excludeIngredients.push("soy");
+  assert.deepEqual(getGoal("user-a").parsedFilter, {
+    diet: "vegan",
+    excludeIngredients: ["peanuts"],
+  });
+
+  const returnedGoal = getGoal("user-a");
+  returnedGoal.rawText = "mutated";
+  returnedGoal.parsedFilter.excludeIngredients.push("tree nuts");
+
+  assert.deepEqual(getGoal("user-a"), {
+    rawText: "vegan without peanuts",
+    parsedFilter: { diet: "vegan", excludeIngredients: ["peanuts"] },
+    updatedAt: getGoal("user-a").updatedAt,
   });
 });
 
-test("memory store returns null for missing goals", () => {
-  assert.equal(getGoal(`missing-${Date.now()}`), null);
-});
+test("memory store records isolated swipe histories and clones returned entries", () => {
+  addSwipe("user-a", "101", "right");
+  addSwipe("user-b", "202", "left");
+  addSwipe("user-a", "303", "left");
 
-test("memory store records swipes and filters by user", () => {
-  const userId = `user-${Date.now()}-swipes`;
-
-  addSwipe(userId, "recipe-1", "right");
-  addSwipe("someone-else", "recipe-2", "left");
-  addSwipe(userId, "recipe-3", "left");
-
-  const swipes = getSwipes(userId);
-
-  assert.equal(swipes.length, 2);
+  const userASwipes = getSwipes("user-a");
   assert.deepEqual(
-    swipes.map(({ userId: swipeUserId, recipeId, direction }) => ({
-      userId: swipeUserId,
-      recipeId,
-      direction,
-    })),
+    userASwipes.map(({ userId, recipeId, direction }) => ({ userId, recipeId, direction })),
     [
-      { userId, recipeId: "recipe-1", direction: "right" },
-      { userId, recipeId: "recipe-3", direction: "left" },
+      { userId: "user-a", recipeId: "101", direction: "right" },
+      { userId: "user-a", recipeId: "303", direction: "left" },
     ]
   );
-  assert.match(swipes[0].timestamp, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(userASwipes[0].timestamp, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(getSwipes("missing").length, 0);
+
+  userASwipes[0].direction = "left";
+  assert.equal(getSwipes("user-a")[0].direction, "right");
+  assert.deepEqual(
+    getSwipes("user-b").map(({ recipeId, direction }) => ({ recipeId, direction })),
+    [{ recipeId: "202", direction: "left" }]
+  );
+});
+
+test("memory store caps retained swipe history per user", () => {
+  for (let index = 0; index < 1005; index += 1) {
+    addSwipe("user-a", String(index), "right");
+  }
+
+  const swipes = getSwipes("user-a");
+  assert.equal(swipes.length, 1000);
+  assert.equal(swipes[0].recipeId, "5");
+  assert.equal(swipes.at(-1).recipeId, "1004");
+});
+
+test("clearStore removes all goals and swipes", () => {
+  setGoal("user-a", "vegan", { diet: "vegan" });
+  addSwipe("user-a", "101", "right");
+
+  clearStore();
+
+  assert.equal(getGoal("user-a"), null);
+  assert.deepEqual(getSwipes("user-a"), []);
 });

@@ -1,7 +1,16 @@
 const express = require("express");
 
 const { parseGoal } = require("../services/geminiService");
+const { normalizeGoalFilter } = require("../services/goalFilter");
 const { getGoal, setGoal } = require("../store/memoryStore");
+const {
+  GOAL_TEXT_MAX_LENGTH,
+  USER_ID_MAX_LENGTH,
+  asyncRoute,
+  createHttpError,
+  requireBoundedString,
+  requireSingleQueryValue,
+} = require("./routeUtils");
 
 const router = express.Router();
 
@@ -9,47 +18,50 @@ function isMissingString(value) {
   return typeof value !== "string" || value.trim() === "";
 }
 
-function normalizeParsedFilter(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-
-router.post("/parse-goal", async (req, res) => {
-  try {
-    const text = req.body?.text;
-
-    if (isMissingString(text)) {
-      return res.status(400).json({ error: "text is required" });
-    }
-
-    const parsedFilter = await parseGoal(text);
+router.post(
+  "/parse-goal",
+  asyncRoute(async (req, res) => {
+    const text = requireBoundedString(req.body?.text, {
+      field: "text",
+      maxLength: GOAL_TEXT_MAX_LENGTH,
+    });
+    const parsedFilter = normalizeGoalFilter(await parseGoal(text), { strict: false });
     return res.json({ parsedFilter });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Unexpected server error" });
-  }
-});
+  })
+);
 
-router.post("/goal", (req, res) => {
-  try {
+router.post(
+  "/goal",
+  asyncRoute((req, res) => {
     const { userId, rawText } = req.body || {};
-
     if (isMissingString(userId) || isMissingString(rawText)) {
-      return res.status(400).json({ error: "userId and rawText are required" });
+      throw createHttpError(400, "userId and rawText are required");
     }
 
-    setGoal(userId.trim(), rawText.trim(), normalizeParsedFilter(req.body?.parsedFilter));
-    return res.json({ success: true });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Unexpected server error" });
-  }
-});
+    const normalizedUserId = requireBoundedString(userId, {
+      field: "userId",
+      maxLength: USER_ID_MAX_LENGTH,
+    });
+    const normalizedRawText = requireBoundedString(rawText, {
+      field: "rawText",
+      maxLength: GOAL_TEXT_MAX_LENGTH,
+    });
+    const parsedFilter = normalizeGoalFilter(req.body?.parsedFilter, { strict: true });
 
-router.get("/goal/current", (req, res) => {
-  try {
-    const userId = typeof req.query?.userId === "string" ? req.query.userId.trim() : "";
-    return res.json(userId ? getGoal(userId) : null);
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Unexpected server error" });
-  }
-});
+    setGoal(normalizedUserId, normalizedRawText, parsedFilter);
+    return res.json({ success: true });
+  })
+);
+
+router.get(
+  "/goal/current",
+  asyncRoute((req, res) => {
+    const userId = requireBoundedString(requireSingleQueryValue(req.query, "userId"), {
+      field: "userId",
+      maxLength: USER_ID_MAX_LENGTH,
+    });
+    return res.json(getGoal(userId));
+  })
+);
 
 module.exports = router;
