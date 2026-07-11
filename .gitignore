@@ -1,0 +1,57 @@
+# Repo-wide secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# Backend
+backend/.env
+backend/.env.*
+!backend/.env.example
+!backend/.env.sample
+backend/secrets/
+backend/credentials/
+backend/__pycache__/
+backend/*.py[cod]
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.venv/
+backend/venv/
+backend/env/
+backend/.coverage
+backend/htmlcov/
+backend/dist/
+backend/build/
+
+# Frontend
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+!frontend/.env.sample
+frontend/node_modules/
+frontend/.next/
+frontend/.nuxt/
+frontend/.svelte-kit/
+frontend/dist/
+frontend/build/
+frontend/coverage/
+frontend/.vite/
+frontend/.cache/
+
+# Logs and local editor files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
