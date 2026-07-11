@@ -24,6 +24,10 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ error: error.message || "Unexpected server error" });
 });
 
-app.listen(port, () => {
-  console.log(`Backend listening on http://localhost:${port}`);
-});
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`Backend listening on http://localhost:${port}`);
+  });
+}
+
+module.exports = app;

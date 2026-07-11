@@ -31,3 +31,11 @@ The app still responds without API keys. Goal parsing uses a simple local fallba
 - `POST /api/swipe`
 
 Run on `http://localhost:3000` by default.
+
+## Test
+
+```bash
+npm test
+```
+
+The test suite uses Node's built-in test runner and mocks external Gemini and Spoonacular calls, so it does not require API keys or network access.
