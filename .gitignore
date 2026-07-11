@@ -45,6 +45,9 @@ frontend/coverage/
 frontend/.vite/
 frontend/.cache/
 
+# Root development tooling
+/node_modules/
+
 # Logs and local editor files
 *.log
 npm-debug.log*

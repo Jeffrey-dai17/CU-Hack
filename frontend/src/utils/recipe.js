@@ -2,6 +2,49 @@ function isUsableNumber(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+export function normalizeRecipeId(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const id = value.trim();
+  if (!/^[1-9]\d*$/.test(id)) {
+    return "";
+  }
+
+  const numericId = Number(id);
+  return Number.isSafeInteger(numericId) && String(numericId) === id ? id : "";
+}
+
+export function isUsableRecipe(recipe) {
+  const normalizedId = normalizeRecipeId(recipe?.id);
+  return Boolean(
+    recipe &&
+      typeof recipe === "object" &&
+      !Array.isArray(recipe) &&
+      normalizedId &&
+      normalizedId === recipe.id,
+  );
+}
+
+export function getSafeHttpUrl(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return "";
+  }
+
+  try {
+    const url = new URL(value.trim());
+
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+      return "";
+    }
+
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
 export function formatCalories(value) {
   return isUsableNumber(value) ? `${Math.round(value)} kcal` : "Calories N/A";
 }
@@ -28,5 +71,5 @@ export function formatServings(value) {
 }
 
 export function normalizeImageUrl(value) {
-  return typeof value === "string" ? value.trim() : "";
+  return getSafeHttpUrl(value);
 }

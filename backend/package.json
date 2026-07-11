@@ -1,8 +1,8 @@
 {
-  "name": "recipe-swipe-backend",
+  "name": "recipe-match-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "Express backend for recipe swipe hackathon app",
+  "description": "Express backend for the Recipe Match hackathon app",
   "main": "src/server.js",
   "engines": {
     "node": ">=20.0.0"

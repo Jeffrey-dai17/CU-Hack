@@ -10,6 +10,10 @@ function getRouteTitle(pathname) {
     return "Recipe Deck | Recipe Match";
   }
 
+  if (pathname === "/liked") {
+    return "Liked Recipes | Recipe Match";
+  }
+
   if (pathname.startsWith("/recipe/")) {
     return "Recipe | Recipe Match";
   }

@@ -10,18 +10,21 @@ vi.mock("../api/client.js", () => ({
 }));
 
 const COMPLETE_RECIPE = {
-  id: "recipe-1",
+  id: "12345",
   title: "Grilled Chicken & Quinoa Bowl",
   image: "https://images.example.test/chicken-bowl.jpg",
   readyInMinutes: 25,
   servings: 2,
-  calories: 480.4,
+  calories: 480,
   macros: {
-    protein_g: 38.2,
-    carbs_g: 42.1,
-    fat_g: 14.4,
+    protein_g: 38,
+    carbs_g: 42,
+    fat_g: 14,
   },
   diets: ["gluten free", "dairy free"],
+  ingredients: ["1 cup quinoa", "1 lemon"],
+  instructions: ["Cook the quinoa.", "Top with grilled chicken."],
+  sourceName: "Example Kitchen",
   sourceUrl: "https://recipes.example.test/chicken-bowl",
 };
 
@@ -41,7 +44,7 @@ function RecipeRouteHarness() {
 
   return (
     <>
-      <button type="button" onClick={() => navigate("/recipe/second-recipe")}>
+      <button type="button" onClick={() => navigate("/recipe/67890")}>
         Open second recipe
       </button>
       <RecipeDetailPage />
@@ -49,9 +52,12 @@ function RecipeRouteHarness() {
   );
 }
 
-function renderRecipeDetail(path = "/recipe/recipe-1", { withNavigation = false } = {}) {
+function renderRecipeDetail(
+  path = "/recipe/12345",
+  { withNavigation = false, routeState = null } = {},
+) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
+    <MemoryRouter initialEntries={[{ pathname: path, state: routeState }]}>
       <Routes>
         <Route
           path="/recipe/:id"
@@ -80,7 +86,7 @@ describe("RecipeDetailPage", () => {
   it("fetches the route id with an abort signal and renders the returned recipe", async () => {
     getRecipeById.mockResolvedValue(COMPLETE_RECIPE);
 
-    renderRecipeDetail("/recipe/api-id-42");
+    renderRecipeDetail("/recipe/12345");
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading your recipe");
     expect(
@@ -91,10 +97,42 @@ describe("RecipeDetailPage", () => {
     ).toBeInTheDocument();
     expect(getRecipeById).toHaveBeenCalledTimes(1);
     expect(getRecipeById).toHaveBeenCalledWith(
-      "api-id-42",
+      "12345",
       expect.objectContaining({ signal: expect.any(Object) }),
     );
     expect(getRecipeById.mock.calls[0][1].signal.aborted).toBe(false);
+  });
+
+  it("uses a matching accepted Recipe DTO from navigation state without refetching", async () => {
+    renderRecipeDetail("/recipe/12345", {
+      routeState: { recipe: COMPLETE_RECIPE },
+    });
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Grilled Chicken & Quinoa Bowl",
+        level: 1,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(getRecipeById).not.toHaveBeenCalled();
+  });
+
+  it("ignores mismatched navigation state and fetches the direct route id", async () => {
+    const requestedRecipe = { ...COMPLETE_RECIPE, id: "67890", title: "Fetched recipe" };
+    getRecipeById.mockResolvedValue(requestedRecipe);
+
+    renderRecipeDetail("/recipe/67890", {
+      routeState: { recipe: COMPLETE_RECIPE },
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "Fetched recipe", level: 1 }),
+    ).toBeInTheDocument();
+    expect(getRecipeById).toHaveBeenCalledWith(
+      "67890",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("does not fetch an incomplete recipe link and focuses its error heading", async () => {
@@ -107,6 +145,14 @@ describe("RecipeDetailPage", () => {
     await waitFor(() => expect(heading).toHaveFocus());
   });
 
+  it("rejects a noncanonical recipe route before making a backend request", async () => {
+    renderRecipeDetail("/recipe/not-a-spoonacular-id");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This recipe link is invalid.");
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    expect(getRecipeById).not.toHaveBeenCalled();
+  });
+
   it("aborts the old request on an id change and ignores its stale result", async () => {
     const user = userEvent.setup();
     const firstRequest = createDeferred();
@@ -115,22 +161,22 @@ describe("RecipeDetailPage", () => {
       .mockReturnValueOnce(firstRequest.promise)
       .mockReturnValueOnce(secondRequest.promise);
 
-    renderRecipeDetail("/recipe/first-recipe", { withNavigation: true });
+    renderRecipeDetail("/recipe/11111", { withNavigation: true });
     await waitFor(() => expect(getRecipeById).toHaveBeenCalledTimes(1));
     const firstSignal = getRecipeById.mock.calls[0][1].signal;
 
     await user.click(screen.getByRole("button", { name: "Open second recipe" }));
     await waitFor(() => expect(getRecipeById).toHaveBeenCalledTimes(2));
     expect(firstSignal.aborted).toBe(true);
-    expect(getRecipeById.mock.calls[1][0]).toBe("second-recipe");
+    expect(getRecipeById.mock.calls[1][0]).toBe("67890");
 
-    secondRequest.resolve({ ...COMPLETE_RECIPE, id: "second-recipe", title: "Second recipe" });
+    secondRequest.resolve({ ...COMPLETE_RECIPE, id: "67890", title: "Second recipe" });
     expect(
       await screen.findByRole("heading", { name: "Second recipe", level: 1 }),
     ).toBeInTheDocument();
 
     await act(async () => {
-      firstRequest.resolve({ ...COMPLETE_RECIPE, id: "first-recipe", title: "Stale recipe" });
+      firstRequest.resolve({ ...COMPLETE_RECIPE, id: "11111", title: "Stale recipe" });
       await firstRequest.promise;
     });
     expect(screen.queryByRole("heading", { name: "Stale recipe" })).not.toBeInTheDocument();
@@ -146,7 +192,7 @@ describe("RecipeDetailPage", () => {
       })
       .mockReturnValueOnce(retryRequest.promise);
 
-    renderRecipeDetail("/recipe/retry-me");
+    renderRecipeDetail("/recipe/12345");
     const errorHeading = await screen.findByRole("heading", {
       name: "Couldn't load this recipe",
     });
@@ -163,7 +209,7 @@ describe("RecipeDetailPage", () => {
       }),
     ).toBeInTheDocument();
     expect(getRecipeById).toHaveBeenCalledTimes(2);
-    expect(getRecipeById.mock.calls.map(([id]) => id)).toEqual(["retry-me", "retry-me"]);
+    expect(getRecipeById.mock.calls.map(([id]) => id)).toEqual(["12345", "12345"]);
   });
 
   it.each([null, [], {}, "not a recipe"]) (
@@ -183,7 +229,7 @@ describe("RecipeDetailPage", () => {
   );
 
   it("renders missing optional fields honestly with semantic N/A nutrition", async () => {
-    await renderLoadedRecipe({ id: "minimal-recipe" });
+    await renderLoadedRecipe({ id: "12345" });
 
     expect(screen.getByRole("heading", { name: "Untitled recipe", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "Untitled recipe image unavailable" })).toHaveTextContent(
@@ -192,7 +238,9 @@ describe("RecipeDetailPage", () => {
     expect(screen.getAllByText("N/A")).toHaveLength(4);
     expect(screen.queryByText(/\b(?:kcal|g)\b/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Recipe diets")).not.toBeInTheDocument();
-    expect(screen.getByText("Recipe instructions unavailable.")).toBeInTheDocument();
+    expect(screen.getByText("Ingredients unavailable for this recipe.")).toBeInTheDocument();
+    expect(screen.getByText("Instructions unavailable for this recipe.")).toBeInTheDocument();
+    expect(screen.getByText("Source unavailable.")).toBeInTheDocument();
   });
 
   it("labels nutrition per serving and keeps every dt before its dd", async () => {
@@ -246,12 +294,16 @@ describe("RecipeDetailPage", () => {
     expect(within(list).getByText("Dairy Free")).toBeInTheDocument();
   });
 
-  it("renders only credential-free HTTP(S) instruction URLs as external links", async () => {
+  it("renders inline recipe text and only credential-free HTTP(S) source URLs", async () => {
     await renderLoadedRecipe();
 
     const sourceLink = screen.getByRole("link", {
-      name: /View full recipe instructions/,
+      name: /Source: Example Kitchen/,
     });
+    expect(screen.getByRole("heading", { name: "Ingredients" })).toBeInTheDocument();
+    expect(screen.getByText("1 cup quinoa")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Instructions" })).toBeInTheDocument();
+    expect(screen.getByText("Top with grilled chicken.")).toBeInTheDocument();
     expect(sourceLink).toHaveAttribute(
       "href",
       "https://recipes.example.test/chicken-bowl",
@@ -259,7 +311,7 @@ describe("RecipeDetailPage", () => {
     expect(sourceLink).toHaveAttribute("target", "_blank");
     expect(sourceLink).toHaveAttribute("rel", "noopener noreferrer");
     expect(sourceLink).toHaveAccessibleName(
-      "View full recipe instructions. Opens in a new tab.",
+      "Source: Example Kitchen. Opens in a new tab.",
     );
   });
 
@@ -271,9 +323,9 @@ describe("RecipeDetailPage", () => {
   ])("rejects an unsafe instruction URL: %s", async (sourceUrl) => {
     await renderLoadedRecipe({ ...COMPLETE_RECIPE, sourceUrl });
 
-    expect(screen.getByText("Recipe instructions unavailable.")).toBeInTheDocument();
+    expect(screen.getByText("Source unavailable.")).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: /View full recipe instructions/ }),
+      screen.queryByRole("link", { name: /Source:/ }),
     ).not.toBeInTheDocument();
   });
 

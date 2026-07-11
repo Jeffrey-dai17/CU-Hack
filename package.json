@@ -1,0 +1,20 @@
+{
+  "name": "recipe-match",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local full-stack workflow for the Recipe Match hackathon MVP",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "npm@11.16.0",
+  "scripts": {
+    "setup": "npm ci --prefix backend && npm ci --prefix frontend",
+    "dev": "concurrently --kill-others --names backend,frontend --prefix-colors green,cyan \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\"",
+    "test:fullstack": "npm --prefix frontend run test:e2e:fullstack",
+    "verify": "npm --prefix backend test && npm --prefix backend run test:coverage && npm --prefix frontend test && npm --prefix frontend run lint && npm --prefix frontend run test:coverage && npm --prefix frontend run build && npm --prefix frontend run test:e2e && npm run test:fullstack",
+    "test:all": "npm run verify"
+  },
+  "devDependencies": {
+    "concurrently": "9.2.4"
+  }
+}

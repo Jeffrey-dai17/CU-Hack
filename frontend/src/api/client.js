@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const DEFAULT_API_BASE_URL = "http://localhost:3000/api";
-const API_TIMEOUT_MS = 15_000;
+export const API_TIMEOUT_MS = 35_000;
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 const baseURL = (configuredBaseUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, "");

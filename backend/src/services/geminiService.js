@@ -3,7 +3,7 @@ const { GoogleGenAI } = require("@google/genai");
 const { GOAL_FILTER_JSON_SCHEMA, normalizeGoalFilter } = require("./goalFilter");
 
 const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash";
-const DEFAULT_GEMINI_TIMEOUT_MS = 10000;
+const DEFAULT_GEMINI_TIMEOUT_MS = 30000;
 const MIN_TIMEOUT_MS = 100;
 const MAX_TIMEOUT_MS = 120000;
 const MAX_GOAL_TEXT_LENGTH = 1000;
@@ -119,7 +119,7 @@ async function parseGoal(rawText) {
         systemInstruction: SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
         responseJsonSchema: GOAL_FILTER_JSON_SCHEMA,
-        temperature: 0,
+        thinkingConfig: { thinkingLevel: "MINIMAL" },
         maxOutputTokens: 512,
         abortSignal,
       },

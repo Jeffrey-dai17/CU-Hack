@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { getRecipeById } from "../api/client.js";
+import { getSafeHttpUrl, isUsableRecipe, normalizeRecipeId } from "../utils/recipe.js";
 import "./RecipeDetailPage.css";
 
 const MAX_PUBLIC_ERROR_LENGTH = 200;
@@ -90,28 +91,25 @@ function getDietLabels(value) {
   return labels;
 }
 
-function getSafeHttpUrl(value) {
-  if (typeof value !== "string" || !value.trim()) {
-    return "";
-  }
+function getRecipeTextList(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => typeof item === "string" && item.trim())
+    .map((item) => item.trim());
+}
 
-  try {
-    const url = new URL(value.trim());
-
-    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
-      return "";
-    }
-
-    return url.toString();
-  } catch {
-    return "";
-  }
+function getRouteStateRecipe(state, recipeId) {
+  const candidate = state?.recipe;
+  return isUsableRecipe(candidate) && candidate.id === recipeId ? candidate : null;
 }
 
 function RecipeDetailPage() {
   const { id } = useParams();
-  const [recipe, setRecipe] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const location = useLocation();
+  const recipeId = normalizeRecipeId(id);
+  const routeStateRecipe = getRouteStateRecipe(location.state, recipeId);
+  const [recipe, setRecipe] = useState(routeStateRecipe);
+  const [isLoading, setIsLoading] = useState(!routeStateRecipe);
   const [errorMessage, setErrorMessage] = useState("");
   const [retryCount, setRetryCount] = useState(0);
   const errorHeadingRef = useRef(null);
@@ -125,8 +123,8 @@ function RecipeDetailPage() {
     setErrorMessage("");
     setRecipe(null);
 
-    if (!id) {
-      setErrorMessage("This recipe link is incomplete.");
+    if (!recipeId) {
+      setErrorMessage(id ? "This recipe link is invalid." : "This recipe link is incomplete.");
       setIsLoading(false);
 
       return () => {
@@ -135,15 +133,20 @@ function RecipeDetailPage() {
       };
     }
 
+    if (routeStateRecipe) {
+      setRecipe(routeStateRecipe);
+      setIsLoading(false);
+      return () => {
+        isCurrentRequest = false;
+        controller.abort();
+      };
+    }
+
     async function loadRecipe() {
       try {
-        const response = await getRecipeById(id, { signal: controller.signal });
+        const response = await getRecipeById(recipeId, { signal: controller.signal });
         const isRecipe =
-          response &&
-          typeof response === "object" &&
-          !Array.isArray(response) &&
-          (response.id != null ||
-            (typeof response.title === "string" && response.title.trim().length > 0));
+          isUsableRecipe(response) && normalizeRecipeId(response.id) === recipeId;
 
         if (!isCurrentRequest) {
           return;
@@ -176,7 +179,7 @@ function RecipeDetailPage() {
       window.clearTimeout(requestTimer);
       controller.abort();
     };
-  }, [id, retryCount]);
+  }, [id, location.state, recipeId, retryCount, routeStateRecipe]);
 
   useEffect(() => {
     if (isLoading || !errorMessage) return undefined;
@@ -224,7 +227,7 @@ function RecipeDetailPage() {
           </h1>
           <p>{errorMessage || "This recipe is unavailable."}</p>
           <div className="recipe-detail-state-actions">
-            {id ? (
+            {recipeId ? (
               <button
                 className="recipe-detail-primary-link recipe-detail-retry-button"
                 type="button"
@@ -255,6 +258,12 @@ function LoadedRecipe({ recipe }) {
   const metadata = getMetadata(recipe);
   const diets = getDietLabels(recipe.diets);
   const sourceUrl = getSafeHttpUrl(recipe.sourceUrl);
+  const sourceName =
+    typeof recipe.sourceName === "string" && recipe.sourceName.trim()
+      ? recipe.sourceName.trim()
+      : "Original recipe";
+  const ingredients = getRecipeTextList(recipe.ingredients);
+  const instructions = getRecipeTextList(recipe.instructions);
   const macros = recipe.macros && typeof recipe.macros === "object" ? recipe.macros : {};
   const nutrition = {
     calories: recipe.calories,
@@ -330,20 +339,34 @@ function LoadedRecipe({ recipe }) {
               </dl>
             </section>
 
+            <div className="recipe-detail-written-recipe">
+              <RecipeTextSection
+                title="Ingredients"
+                emptyText="Ingredients unavailable for this recipe."
+                items={ingredients}
+              />
+              <RecipeTextSection
+                title="Instructions"
+                emptyText="Instructions unavailable for this recipe."
+                items={instructions}
+                ordered
+              />
+            </div>
+
             <footer className="recipe-detail-actions">
               {sourceUrl ? (
                 <a
-                  className="recipe-detail-primary-link"
+                  className="recipe-detail-source-link"
                   href={sourceUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label="View full recipe instructions. Opens in a new tab."
+                  aria-label={`Source: ${sourceName}. Opens in a new tab.`}
                 >
-                  View full recipe instructions
+                  Source: {sourceName}
                   <span aria-hidden="true">↗</span>
                 </a>
               ) : (
-                <p className="recipe-detail-source-unavailable">Recipe instructions unavailable.</p>
+                <p className="recipe-detail-source-unavailable">Source unavailable.</p>
               )}
 
               <Link className="recipe-detail-secondary-link" to="/deck">
@@ -354,6 +377,26 @@ function LoadedRecipe({ recipe }) {
         </article>
       </div>
     </main>
+  );
+}
+
+function RecipeTextSection({ title, emptyText, items, ordered = false }) {
+  const sectionId = `recipe-detail-${title.toLowerCase()}`;
+  const ListTag = ordered ? "ol" : "ul";
+
+  return (
+    <section className="recipe-detail-text-section" aria-labelledby={sectionId}>
+      <h2 id={sectionId}>{title}</h2>
+      {items.length > 0 ? (
+        <ListTag>
+          {items.map((item, index) => (
+            <li key={`${index}-${item}`}>{item}</li>
+          ))}
+        </ListTag>
+      ) : (
+        <p>{emptyText}</p>
+      )}
+    </section>
   );
 }
 

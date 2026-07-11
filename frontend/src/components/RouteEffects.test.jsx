@@ -16,6 +16,7 @@ describe("RouteEffects", () => {
   it.each([
     ["/", "Recipe Match"],
     ["/deck", "Recipe Deck | Recipe Match"],
+    ["/liked", "Liked Recipes | Recipe Match"],
     ["/recipe/abc-123", "Recipe | Recipe Match"],
     ["/not-a-real-page", "Page Not Found | Recipe Match"],
   ])("sets the document title for %s", (path, expectedTitle) => {

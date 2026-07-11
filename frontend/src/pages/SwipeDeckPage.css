@@ -45,6 +45,12 @@
   line-height: 1.35;
 }
 
+.deck-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .deck-primary-button,
 .deck-secondary-button {
   display: inline-flex;
@@ -270,13 +276,35 @@
   background: var(--color-primary-strong);
 }
 
-.deck-swipe-error {
+.deck-swipe-error,
+.deck-swipe-status,
+.deck-load-more-error {
   width: min(100%, 430px);
   margin: 0;
+  text-align: center;
+}
+
+.deck-swipe-status {
+  color: var(--color-muted);
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.deck-swipe-error,
+.deck-load-more-error {
   color: #8d251f;
   font-weight: 800;
   line-height: 1.4;
-  text-align: center;
+}
+
+.deck-load-more-error {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.deck-load-more-error p {
+  margin: 0;
 }
 
 .swipe-deck-state-page {
@@ -304,6 +332,134 @@
   gap: 10px;
 }
 
+.deck-workspace {
+  width: min(100%, 1280px);
+}
+
+.deck-card-stage {
+  width: min(100%, 1180px);
+  height: clamp(500px, calc(100dvh - 210px), 720px);
+}
+
+.recipe-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  color: var(--color-ink);
+  background: rgba(255, 250, 240, 0.96);
+}
+
+.recipe-card-image-panel {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(14px, 2vw, 28px);
+  background:
+    radial-gradient(circle at 24% 18%, rgba(255, 250, 240, 0.4), transparent 28%),
+    linear-gradient(135deg, #253828 0%, #111912 100%);
+}
+
+.recipe-card-image,
+.recipe-card-image-fallback {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: calc(var(--radius-sm) - 6px);
+}
+
+.recipe-card-image {
+  object-fit: contain;
+}
+
+.recipe-card-details {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  overflow-y: auto;
+  padding: clamp(22px, 2.8vw, 36px);
+  background: linear-gradient(180deg, rgba(255, 250, 240, 0.98), rgba(246, 238, 224, 0.98));
+}
+
+.recipe-card-label {
+  margin: 0 0 8px;
+  color: var(--color-primary-strong);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.recipe-card-summary h2 {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: clamp(2rem, 3.4vw, 3.6rem);
+  line-height: 0.98;
+  overflow-wrap: anywhere;
+}
+
+.recipe-card-summary h2:focus {
+  outline: none;
+}
+
+.recipe-card-summary .recipe-card-meta {
+  color: var(--color-muted);
+  text-shadow: none;
+}
+
+.recipe-card-summary .recipe-card-meta + .recipe-card-meta {
+  display: none;
+}
+
+.recipe-card-text-section {
+  min-width: 0;
+}
+
+.recipe-card-text-section h3 {
+  margin: 0 0 10px;
+  color: var(--color-ink);
+  font-size: 1.05rem;
+}
+
+.recipe-card-text-section ul,
+.recipe-card-text-section ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #465448;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.recipe-card-text-section p {
+  margin: 0;
+  color: var(--color-muted);
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.recipe-card-source {
+  padding-top: 4px;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.recipe-card-source a {
+  color: var(--color-primary-strong);
+}
+
+.recipe-card-legacy-meta {
+  display: none !important;
+}
+
+.deck-actions,
+.deck-swipe-error,
+.deck-swipe-status,
+.deck-load-more-error {
+  width: min(100%, 1180px);
+}
+
 @media (max-width: 700px) {
   .swipe-deck-page {
     padding: 14px;
@@ -322,6 +478,19 @@
 
   .deck-card-stage {
     height: clamp(370px, calc(100dvh - 300px), 560px);
+  }
+
+  .recipe-card {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .recipe-card-image-panel {
+    min-height: 300px;
+  }
+
+  .recipe-card-details {
+    overflow: visible;
   }
 
   .recipe-card-overlay {
@@ -350,6 +519,16 @@
 
   .deck-card-stage {
     height: clamp(320px, calc(100dvh - 285px), 520px);
+  }
+
+  .recipe-card-image-panel {
+    min-height: 240px;
+    padding: 10px;
+  }
+
+  .recipe-card-details {
+    gap: 14px;
+    padding: 16px;
   }
 
   .recipe-card-overlay {
@@ -424,5 +603,20 @@
   .deck-actions button {
     width: 58px;
     height: 58px;
+  }
+}
+
+@media (min-width: 701px) and (min-height: 701px) and (max-height: 820px) {
+  .deck-card-stage {
+    height: clamp(440px, calc(100dvh - 280px), 540px);
+  }
+
+  .deck-actions {
+    grid-template-columns: repeat(2, 60px);
+  }
+
+  .deck-actions button {
+    width: 60px;
+    height: 60px;
   }
 }

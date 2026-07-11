@@ -53,7 +53,9 @@ app.use((error, req, res, next) => {
       statusCode,
       message: redactConfiguredSecrets(error?.message || String(error)),
     };
-    if (typeof error?.code === "string") diagnostic.code = error.code;
+    if (typeof error?.code === "string") {
+      diagnostic.code = redactConfiguredSecrets(error.code);
+    }
     if (typeof error?.retryable === "boolean") diagnostic.retryable = error.retryable;
     if (error?.cause?.message) {
       diagnostic.cause = redactConfiguredSecrets(error.cause.message);
@@ -125,9 +127,18 @@ function redactConfiguredSecrets(value) {
   for (const name of ["GEMINI_API_KEY", "SPOONACULAR_API_KEY"]) {
     const secret = process.env[name];
     if (typeof secret === "string" && secret.trim() !== "") {
-      const variants = [...new Set([secret, secret.trim()])].sort(
-        (left, right) => right.length - left.length
-      );
+      const rawVariants = [secret, secret.trim()];
+      const variants = [
+        ...new Set(
+          rawVariants.flatMap((variant) => [
+            variant,
+            encodeURIComponent(variant.toWellFormed()),
+            new URLSearchParams({ value: variant }).toString().slice("value=".length),
+          ])
+        ),
+      ]
+        .filter(Boolean)
+        .sort((left, right) => right.length - left.length);
       for (const variant of variants) {
         redacted = redacted.split(variant).join("[REDACTED]");
       }

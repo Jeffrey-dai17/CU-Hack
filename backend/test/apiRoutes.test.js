@@ -68,6 +68,9 @@ function recipeFixture(id = "101", overrides = {}) {
     calories: 450,
     macros: { protein_g: 22, carbs_g: 50, fat_g: 10 },
     diets: ["vegan"],
+    ingredients: ["1 cup quinoa", "1 avocado"],
+    instructions: ["Cook the quinoa.", "Top with avocado."],
+    sourceName: "Example Kitchen",
     sourceUrl: "https://example.com/vegan-demo",
     ...overrides,
   };
@@ -76,11 +79,21 @@ function recipeFixture(id = "101", overrides = {}) {
 function loadApp({
   parseGoal = async () => ({}),
   searchRecipes = async () => [recipeFixture()],
+  searchRecipePage,
   getRecipeById = async (id) => recipeFixture(id),
 } = {}) {
   clearAppModules();
   mockModule(geminiServicePath, { parseGoal });
-  mockModule(spoonacularServicePath, { getRecipeById, searchRecipes });
+  mockModule(spoonacularServicePath, {
+    getRecipeById,
+    searchRecipePage:
+      searchRecipePage ||
+      (async (filter, pagination) => ({
+        recipes: await searchRecipes(filter, pagination),
+        hasMore: false,
+      })),
+    searchRecipes,
+  });
   return require("../src/server");
 }
 
@@ -180,7 +193,7 @@ test("API routes expose the complete frontend contract and persist swipes", asyn
     );
     assertResponse(recipes, 200, {
       recipes: [recipeFixture("101")],
-      pagination: { limit: 2, offset: 20, count: 1 },
+      pagination: { limit: 2, offset: 20, count: 1, hasMore: false },
     });
     assert.deepEqual(searchCalls, [
       {
@@ -403,11 +416,23 @@ test("body, query, identifier, direction, and pagination validation reject bad i
       400,
       { error: "limit must be provided once" }
     );
+    assertResponse(
+      await request(baseUrl, "/api/recipes?userId=user&offset=1&offset=2"),
+      400,
+      { error: "offset must be provided once" }
+    );
     assert.equal(searchCalls, 0);
 
-    for (const id of ["abc", "0", "-1"]) {
+    for (const [id, message] of [
+      ["abc", "id must be a positive integer"],
+      ["0", "id must be a positive integer"],
+      ["-1", "id must be a positive integer"],
+      ["0001", "id must be a positive integer"],
+      ["9007199254740992", "id must be a positive integer"],
+      ["1".repeat(33), "id must be at most 32 characters"],
+    ]) {
       assertResponse(await request(baseUrl, `/api/recipes/${id}`), 400, {
-        error: "id must be a positive integer",
+        error: message,
       });
     }
     assert.equal(detailCalls, 0);
@@ -420,11 +445,20 @@ test("body, query, identifier, direction, and pagination validation reject bad i
     assertResponse(
       await postJson(baseUrl, "/api/swipe", {
         userId: "user",
-        recipeId: "abc",
+        recipeId: "0001",
         direction: "right",
       }),
       400,
       { error: "recipeId must be a positive integer" }
+    );
+    assertResponse(
+      await postJson(baseUrl, "/api/swipe", {
+        userId: "u".repeat(129),
+        recipeId: "101",
+        direction: "right",
+      }),
+      400,
+      { error: "userId must be at most 128 characters" }
     );
     assertResponse(
       await postJson(baseUrl, "/api/swipe", {
@@ -450,25 +484,43 @@ test("recipe pagination defaults are passed to the provider and returned to clie
   await withTestServer(app, async (baseUrl) => {
     assertResponse(await request(baseUrl, "/api/recipes?userId=new-user"), 200, {
       recipes: [],
-      pagination: { limit: 10, offset: 0, count: 0 },
+      pagination: { limit: 10, offset: 0, count: 0, hasMore: false },
     });
     assert.deepEqual(calls, [{ filter: {}, pagination: { limit: 10, offset: 0 } }]);
   });
 });
 
+test("recipe pagination preserves provider continuation independently of normalized count", async () => {
+  const app = loadApp({
+    searchRecipePage: async () => ({ recipes: [recipeFixture("101")], hasMore: true }),
+  });
+
+  await withTestServer(app, async (baseUrl) => {
+    assertResponse(await request(baseUrl, "/api/recipes?userId=user&limit=10&offset=20"), 200, {
+      recipes: [recipeFixture("101")],
+      pagination: { limit: 10, offset: 20, count: 1, hasMore: true },
+    });
+  });
+});
+
 test("central error handling preserves typed public errors and redacts internal failures", async () => {
-  process.env.GEMINI_API_KEY = "  gemini-sensitive-key  ";
+  const geminiSecret = "gemini sensitive/key?value";
+  const encodedGeminiSecret = encodeURIComponent(geminiSecret);
+  const queryEncodedGeminiSecret = new URLSearchParams({ value: geminiSecret })
+    .toString()
+    .slice("value=".length);
+  process.env.GEMINI_API_KEY = `  ${geminiSecret}  `;
   process.env.SPOONACULAR_API_KEY = "  spoonacular-sensitive-key  ";
   const typedError = Object.assign(
-    new Error("Recipe provider request failed", {
+    new Error(`Recipe provider request failed for ${encodedGeminiSecret}`, {
       cause: new Error(
-        "provider status 429 for spoonacular-sensitive-key and gemini-sensitive-key"
+        `provider status 429 for spoonacular-sensitive-key and ${queryEncodedGeminiSecret}`
       ),
     }),
     {
       statusCode: 503,
       publicMessage: "Recipe service is temporarily unavailable",
-      code: "SPOONACULAR_RATE_LIMITED",
+      code: `SPOONACULAR_RATE_LIMITED:${geminiSecret}`,
       retryable: true,
     }
   );
@@ -507,10 +559,13 @@ test("central error handling preserves typed public errors and redacts internal 
 
   const serializedLogs = JSON.stringify(logged);
   assert.match(serializedLogs, /provider status 429/);
-  assert.match(serializedLogs, /SPOONACULAR_RATE_LIMITED/);
+  assert.match(serializedLogs, /SPOONACULAR_RATE_LIMITED:\[REDACTED\]/);
   assert.match(serializedLogs, /"retryable":true/);
   assert.match(serializedLogs, /\[REDACTED\]/);
-  assert.doesNotMatch(serializedLogs, /spoonacular-sensitive-key|gemini-sensitive-key/);
+  assert.doesNotMatch(serializedLogs, /spoonacular-sensitive-key/);
+  assert.equal(serializedLogs.includes(geminiSecret), false);
+  assert.equal(serializedLogs.includes(encodedGeminiSecret), false);
+  assert.equal(serializedLogs.includes(queryEncodedGeminiSecret), false);
   assert.match(serializedLogs, /Spoonacular raw secret failure/);
   assert.match(serializedLogs, /Gemini SDK secret failure/);
 });

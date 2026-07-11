@@ -47,7 +47,22 @@ test("searchRecipes sends canonical filters, pagination, enrichment, and a deadl
           readyInMinutes: "25.4",
           servings: 2.2,
           diets: [" vegan ", "VEGAN", null],
+          sourceName: " Example Kitchen ",
           sourceUrl: " https://example.com/recipe ",
+          extendedIngredients: [
+            { original: " 1 cup quinoa " },
+            { originalName: "grilled chicken" },
+            { name: " lemon " },
+            { original: "1 cup quinoa" },
+          ],
+          analyzedInstructions: [
+            {
+              steps: [
+                { number: 1, step: " Cook the quinoa. " },
+                { number: 2, step: "Top with chicken & lemon." },
+              ],
+            },
+          ],
           nutrition: {
             nutrients: [
               { name: "Calories", amount: 499.7, unit: "kcal" },
@@ -88,7 +103,9 @@ test("searchRecipes sends canonical filters, pagination, enrichment, and a deadl
   assert.equal(requestedUrl.searchParams.get("number"), "7");
   assert.equal(requestedUrl.searchParams.get("offset"), "20");
   assert.equal(requestedUrl.searchParams.get("addRecipeInformation"), "true");
+  assert.equal(requestedUrl.searchParams.get("addRecipeInstructions"), "true");
   assert.equal(requestedUrl.searchParams.get("addRecipeNutrition"), "true");
+  assert.equal(requestedUrl.searchParams.get("fillIngredients"), "true");
   assert.equal(requestedUrl.searchParams.get("maxCalories"), "500");
   assert.equal(requestedUrl.searchParams.get("minProtein"), "30");
   assert.equal(requestedUrl.searchParams.get("diet"), "vegan");
@@ -108,6 +125,9 @@ test("searchRecipes sends canonical filters, pagination, enrichment, and a deadl
       calories: 500,
       macros: { protein_g: 31, carbs_g: 46, fat_g: 12 },
       diets: ["vegan"],
+      ingredients: ["1 cup quinoa", "grilled chicken", "lemon"],
+      instructions: ["Cook the quinoa.", "Top with chicken & lemon."],
+      sourceName: "Example Kitchen",
       sourceUrl: "https://example.com/recipe",
     },
     {
@@ -119,6 +139,9 @@ test("searchRecipes sends canonical filters, pagination, enrichment, and a deadl
       calories: null,
       macros: { protein_g: null, carbs_g: null, fat_g: null },
       diets: [],
+      ingredients: [],
+      instructions: [],
+      sourceName: "",
       sourceUrl: "",
     },
   ]);
@@ -157,14 +180,45 @@ test("searchRecipes never returns more rows than the requested limit", async () 
         title: `Recipe ${index + 1}`,
       })),
     });
-  const { searchRecipes } = loadService();
+  const { searchRecipePage } = loadService();
 
-  const recipes = await searchRecipes({}, { limit: 2, offset: 0 });
+  const page = await searchRecipePage({}, { limit: 2, offset: 0 });
 
   assert.deepEqual(
-    recipes.map((recipe) => recipe.id),
+    page.recipes.map((recipe) => recipe.id),
     ["1", "2"]
   );
+  assert.equal(page.hasMore, true);
+});
+
+test("searchRecipePage derives continuation from provider totals, raw rows, and offset bounds", async () => {
+  process.env.SPOONACULAR_API_KEY = "spoon-key";
+  let payload;
+  global.fetch = async () => jsonResponse(payload);
+  const { searchRecipePage } = loadService();
+
+  const cases = [
+    { limit: 2, offset: 0, rawCount: 2, totalResults: 3, expected: true },
+    { limit: 2, offset: 2, rawCount: 1, totalResults: 3, expected: false },
+    { limit: 2, offset: 10, rawCount: 2, totalResults: "100", expected: true },
+    { limit: 2, offset: 10, rawCount: 1, totalResults: "100", expected: false },
+    { limit: 1, offset: 899, rawCount: 1, totalResults: 901, expected: true },
+    { limit: 1, offset: 900, rawCount: 1, totalResults: 1000, expected: false },
+  ];
+
+  for (const testCase of cases) {
+    payload = {
+      results: Array.from({ length: testCase.rawCount }, (_, index) => ({
+        id: testCase.offset + index + 1,
+        title: `Recipe ${testCase.offset + index + 1}`,
+      })),
+      totalResults: testCase.totalResults,
+    };
+
+    const page = await searchRecipePage({}, testCase);
+    assert.equal(page.recipes.length, Math.min(testCase.rawCount, testCase.limit));
+    assert.equal(page.hasMore, testCase.expected);
+  }
 });
 
 test("searchRecipes validates pagination bounds before calling the provider", async () => {
@@ -214,6 +268,9 @@ test("getRecipeById validates and canonicalizes numeric ids", async () => {
     calories: null,
     macros: { protein_g: null, carbs_g: null, fat_g: null },
     diets: [],
+    ingredients: [],
+    instructions: [],
+    sourceName: "",
     sourceUrl: "",
   });
   assert.equal(requestedUrl.pathname, "/recipes/456/information");
@@ -238,6 +295,7 @@ test("recipe URLs allow only absolute HTTP(S) values without credentials", () =>
       title: "Safe links",
       image: "http://images.example.com/a.jpg",
       sourceUrl: "https://user:password@example.com/recipe",
+      spoonacularSourceUrl: "https://spoonacular.com/recipes/safe-links-1",
     }),
     {
       id: "1",
@@ -248,10 +306,46 @@ test("recipe URLs allow only absolute HTTP(S) values without credentials", () =>
       calories: null,
       macros: { protein_g: null, carbs_g: null, fat_g: null },
       diets: [],
-      sourceUrl: "",
+      ingredients: [],
+      instructions: [],
+      sourceName: "",
+      sourceUrl: "https://spoonacular.com/recipes/safe-links-1",
     }
   );
   assert.equal(normalizeRecipe({ id: 2, title: "Bad", image: "data:text/html,hello" }).image, "");
+});
+
+test("recipe normalization extracts safe inline recipe text and upgrades provider thumbnails", () => {
+  const { normalizeRecipe } = loadService();
+
+  assert.deepEqual(
+    normalizeRecipe({
+      id: 716429,
+      title: "Pasta Bowl",
+      image: "https://img.spoonacular.com/recipes/716429-312x231.jpg",
+      sourceName: "Full Belly Sisters",
+      extendedIngredients: [
+        { original: "<b>1 cup</b> pasta" },
+        { original: "1 cup pasta" },
+        { name: "scallions &amp; garlic" },
+      ],
+      instructions: "<ol><li>Boil pasta.</li><li>Mix with scallions &amp; garlic.</li></ol>",
+    }),
+    {
+      id: "716429",
+      title: "Pasta Bowl",
+      image: "https://img.spoonacular.com/recipes/716429-556x370.jpg",
+      readyInMinutes: null,
+      servings: null,
+      calories: null,
+      macros: { protein_g: null, carbs_g: null, fat_g: null },
+      diets: [],
+      ingredients: ["1 cup pasta", "scallions & garlic"],
+      instructions: ["Boil pasta.", "Mix with scallions & garlic."],
+      sourceName: "Full Belly Sisters",
+      sourceUrl: "",
+    }
+  );
 });
 
 test("missing Spoonacular configuration returns a safe 503", async () => {

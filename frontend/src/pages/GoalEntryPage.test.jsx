@@ -4,12 +4,29 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseGoal, saveGoal } from "../api/client.js";
 import { USER_ID } from "../constants.js";
+import {
+  clearDeckSessions,
+  readDeckSession,
+  writeDeckSession,
+} from "../utils/deckSession.js";
 import GoalEntryPage from "./GoalEntryPage.jsx";
 
 vi.mock("../api/client.js", () => ({
   parseGoal: vi.fn(),
   saveGoal: vi.fn(),
 }));
+
+const CACHED_RECIPE = {
+  id: "12345",
+  title: "Old match",
+  image: "https://images.example/old-match.jpg",
+  readyInMinutes: 25,
+  servings: 2,
+  calories: 480,
+  macros: { protein_g: 38, carbs_g: 42, fat_g: 14 },
+  diets: ["vegan"],
+  sourceUrl: "https://recipes.example/old-match",
+};
 
 function createDeferred() {
   let resolve;
@@ -37,6 +54,8 @@ describe("GoalEntryPage", () => {
   beforeEach(() => {
     parseGoal.mockReset();
     saveGoal.mockReset();
+    clearDeckSessions(USER_ID);
+    window.sessionStorage.clear();
   });
 
   it("renders the prompt without making a request and keeps blank goals disabled", () => {
@@ -66,7 +85,7 @@ describe("GoalEntryPage", () => {
     saveGoal.mockImplementation(async (userId, rawText, filter) => {
       callOrder.push(`save:${userId}:${rawText}`);
       expect(filter).toBe(parsedFilter);
-      return { ok: true };
+      return { success: true };
     });
 
     renderGoalEntry();
@@ -116,13 +135,13 @@ describe("GoalEntryPage", () => {
       "Parsing your goal and tuning your recipe feed...",
     );
 
-    parsed.resolve({ parsedFilter: { minProtein: 30 } });
+    parsed.resolve({ parsedFilter: { minProtein_g: 30 } });
     await waitFor(() => expect(saveGoal).toHaveBeenCalledTimes(1));
     expect(input).toBeDisabled();
     fireEvent.submit(form);
     expect(parseGoal).toHaveBeenCalledTimes(1);
 
-    saved.resolve({ ok: true });
+    saved.resolve({ success: true });
     expect(
       await screen.findByRole("heading", { name: "Recipe deck destination" }),
     ).toBeInTheDocument();
@@ -130,7 +149,7 @@ describe("GoalEntryPage", () => {
 
   it("enforces the 1000-character limit in state and exposes the live count", async () => {
     parseGoal.mockResolvedValue({ parsedFilter: {} });
-    saveGoal.mockResolvedValue({ ok: true });
+    saveGoal.mockResolvedValue({ success: true });
     renderGoalEntry();
 
     const input = screen.getByLabelText("Your food goal");
@@ -209,5 +228,49 @@ describe("GoalEntryPage", () => {
     );
     expect(screen.queryByRole("heading", { name: "Recipe deck destination" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start swiping" })).toBeEnabled();
+  });
+
+  it("clears the previous goal's deck only after a new goal saves successfully", async () => {
+    const user = userEvent.setup();
+    const oldGoalVersion = "2026-07-11T16:00:00.000Z";
+    const oldDeck = {
+      recipes: [CACHED_RECIPE],
+      currentIndex: 0,
+      nextOffset: 10,
+      hasMore: false,
+    };
+    writeDeckSession(USER_ID, oldGoalVersion, oldDeck);
+    parseGoal.mockResolvedValue({ parsedFilter: { minProtein_g: 30 } });
+    saveGoal.mockResolvedValue({ success: true });
+
+    renderGoalEntry();
+    await user.type(screen.getByLabelText("Your food goal"), "high protein");
+    await user.click(screen.getByRole("button", { name: "Start swiping" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Recipe deck destination" }),
+    ).toBeInTheDocument();
+    expect(readDeckSession(USER_ID, oldGoalVersion)).toBeNull();
+  });
+
+  it("keeps the previous deck when saving the replacement goal fails", async () => {
+    const user = userEvent.setup();
+    const oldGoalVersion = "2026-07-11T16:00:00.000Z";
+    const oldDeck = {
+      recipes: [CACHED_RECIPE],
+      currentIndex: 0,
+      nextOffset: 10,
+      hasMore: false,
+    };
+    writeDeckSession(USER_ID, oldGoalVersion, oldDeck);
+    parseGoal.mockResolvedValue({ parsedFilter: { minProtein_g: 30 } });
+    saveGoal.mockRejectedValue(new Error("network failed"));
+
+    renderGoalEntry();
+    await user.type(screen.getByLabelText("Your food goal"), "high protein");
+    await user.click(screen.getByRole("button", { name: "Start swiping" }));
+
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(readDeckSession(USER_ID, oldGoalVersion)).toEqual(oldDeck);
   });
 });

@@ -1,6 +1,6 @@
 const express = require("express");
 
-const { getRecipeById, searchRecipes } = require("../services/spoonacularService");
+const { getRecipeById, searchRecipePage } = require("../services/spoonacularService");
 const { getGoal } = require("../store/memoryStore");
 const {
   USER_ID_MAX_LENGTH,
@@ -33,11 +33,14 @@ router.get(
       defaultValue: 0,
     });
     const goal = getGoal(userId);
-    const recipes = await searchRecipes(goal?.parsedFilter || {}, { limit, offset });
+    const { recipes, hasMore } = await searchRecipePage(goal?.parsedFilter || {}, {
+      limit,
+      offset,
+    });
 
     return res.json({
       recipes,
-      pagination: { limit, offset, count: recipes.length },
+      pagination: { limit, offset, count: recipes.length, hasMore },
     });
   })
 );

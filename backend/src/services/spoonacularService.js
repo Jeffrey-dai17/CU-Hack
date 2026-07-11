@@ -167,6 +167,24 @@ function normalizeHttpUrl(value) {
   }
 }
 
+function normalizeRecipeImageUrl(value, recipeId) {
+  const safeUrl = normalizeHttpUrl(value);
+  if (!safeUrl || !recipeId) return safeUrl;
+
+  try {
+    const url = new URL(safeUrl);
+    const match = url.pathname.match(/^\/recipes\/([1-9]\d*)-\d+x\d+\.(jpg|jpeg|png|webp)$/i);
+    if (url.hostname === "img.spoonacular.com" && match?.[1] === recipeId) {
+      url.pathname = `/recipes/${recipeId}-556x370.${match[2].toLowerCase()}`;
+      return url.toString();
+    }
+  } catch (_error) {
+    return safeUrl;
+  }
+
+  return safeUrl;
+}
+
 function normalizeNonNegativeNumber(value) {
   if (typeof value === "string" && value.trim() === "") return null;
   const number = typeof value === "number" || typeof value === "string" ? Number(value) : NaN;
@@ -198,6 +216,88 @@ function normalizeDiets(value) {
   return diets;
 }
 
+function stripHtml(value) {
+  return String(value || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|li|div|h[1-6])>/gi, "\n")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeTextList(values, { maxItems = 80, maxLength = 500 } = {}) {
+  if (!Array.isArray(values)) return [];
+
+  const normalized = [];
+  const seen = new Set();
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const text = stripHtml(value).slice(0, maxLength).trim();
+    const key = text.toLowerCase();
+    if (!text || seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(text);
+    if (normalized.length >= maxItems) break;
+  }
+  return normalized;
+}
+
+function normalizeIngredients(value) {
+  if (!Array.isArray(value)) return [];
+
+  return normalizeTextList(
+    value.map((ingredient) => {
+      if (!ingredient || typeof ingredient !== "object" || Array.isArray(ingredient)) {
+        return "";
+      }
+      return ingredient.original || ingredient.originalName || ingredient.name || "";
+    }),
+    { maxItems: 60, maxLength: 240 }
+  );
+}
+
+function normalizeAnalyzedInstructions(value) {
+  if (!Array.isArray(value)) return [];
+
+  const steps = [];
+  for (const instructionGroup of value) {
+    if (!instructionGroup || typeof instructionGroup !== "object" || Array.isArray(instructionGroup)) {
+      continue;
+    }
+    if (!Array.isArray(instructionGroup.steps)) continue;
+
+    for (const step of instructionGroup.steps) {
+      if (!step || typeof step !== "object" || Array.isArray(step)) continue;
+      steps.push(step.step);
+    }
+  }
+
+  return normalizeTextList(steps, { maxItems: 80, maxLength: 500 });
+}
+
+function normalizeInstructionHtml(value) {
+  const text = stripHtml(value);
+  if (!text) return [];
+
+  return normalizeTextList(
+    text
+      .split(/(?:\n+|(?<=\.)\s+(?=(?:\d+\.|[A-Z])))/)
+      .map((step) => step.replace(/^\s*\d+[\).:-]?\s*/, "")),
+    { maxItems: 80, maxLength: 500 }
+  );
+}
+
+function normalizeInstructions(item) {
+  const analyzedSteps = normalizeAnalyzedInstructions(item?.analyzedInstructions);
+  return analyzedSteps.length > 0 ? analyzedSteps : normalizeInstructionHtml(item?.instructions);
+}
+
 function getNutrientAmount(nutrients, name) {
   if (!Array.isArray(nutrients)) return null;
   const nutrient = nutrients.find((item) => item && item.name === name);
@@ -215,7 +315,7 @@ function normalizeRecipe(item) {
   return {
     id,
     title,
-    image: normalizeHttpUrl(item.image),
+    image: normalizeRecipeImageUrl(item.image, id),
     readyInMinutes: normalizeNonNegativeNumber(item.readyInMinutes),
     servings: normalizeNonNegativeNumber(item.servings),
     calories: getNutrientAmount(nutrients, "Calories"),
@@ -225,8 +325,22 @@ function normalizeRecipe(item) {
       fat_g: getNutrientAmount(nutrients, "Fat"),
     },
     diets: normalizeDiets(item.diets),
-    sourceUrl: normalizeHttpUrl(item.sourceUrl),
+    ingredients: normalizeIngredients(item.extendedIngredients),
+    instructions: normalizeInstructions(item),
+    sourceName: normalizeOptionalString(item.sourceName || item.creditsText),
+    sourceUrl: normalizeHttpUrl(item.sourceUrl) || normalizeHttpUrl(item.spoonacularSourceUrl),
   };
+}
+
+function hasMoreProviderResults(data, { limit, offset }) {
+  const nextOffset = offset + limit;
+  if (nextOffset > MAX_SEARCH_OFFSET) return false;
+
+  if (Number.isSafeInteger(data.totalResults) && data.totalResults >= 0) {
+    return nextOffset < data.totalResults;
+  }
+
+  return data.results.length >= limit;
 }
 
 function normalizeSearchOptions(options = {}) {
@@ -258,7 +372,7 @@ function normalizeSearchOptions(options = {}) {
   return { limit, offset };
 }
 
-async function searchRecipes(parsedFilter = {}, options = {}) {
+async function searchRecipePage(parsedFilter = {}, options = {}) {
   const filter = normalizeGoalFilter(parsedFilter);
   const { limit, offset } = normalizeSearchOptions(options);
   const apiKey = getApiKey();
@@ -267,7 +381,9 @@ async function searchRecipes(parsedFilter = {}, options = {}) {
     number: String(limit),
     offset: String(offset),
     addRecipeInformation: "true",
+    addRecipeInstructions: "true",
     addRecipeNutrition: "true",
+    fillIngredients: "true",
   });
 
   if (filter.maxCalories !== undefined) params.set("maxCalories", String(filter.maxCalories));
@@ -287,7 +403,15 @@ async function searchRecipes(parsedFilter = {}, options = {}) {
     throw invalidResponseError("Spoonacular recipe search");
   }
 
-  return data.results.slice(0, limit).map(normalizeRecipe).filter(Boolean);
+  return {
+    recipes: data.results.slice(0, limit).map(normalizeRecipe).filter(Boolean),
+    hasMore: hasMoreProviderResults(data, { limit, offset }),
+  };
+}
+
+async function searchRecipes(parsedFilter = {}, options = {}) {
+  const page = await searchRecipePage(parsedFilter, options);
+  return page.recipes;
 }
 
 function normalizeRecipeId(id) {
@@ -326,5 +450,6 @@ module.exports = {
   getFallbackRecipeById: () => null,
   getRecipeById,
   normalizeRecipe,
+  searchRecipePage,
   searchRecipes,
 };

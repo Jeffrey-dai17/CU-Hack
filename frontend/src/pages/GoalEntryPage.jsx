@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { parseGoal, saveGoal } from "../api/client.js";
 import { USER_ID } from "../constants.js";
+import { clearDeckSessions } from "../utils/deckSession.js";
 import "./GoalEntryPage.css";
 
 const MAX_GOAL_LENGTH = 1000;
@@ -63,7 +64,10 @@ function GoalEntryPage() {
       }
 
       await saveGoal(USER_ID, trimmedGoal, parsedFilter, { signal: controller.signal });
-      if (isMountedRef.current && !controller.signal.aborted) navigate("/deck");
+      if (isMountedRef.current && !controller.signal.aborted) {
+        clearDeckSessions(USER_ID);
+        navigate("/deck");
+      }
     } catch (error) {
       if (isMountedRef.current && !controller.signal.aborted) {
         setErrorMessage(getPublicErrorMessage(error));

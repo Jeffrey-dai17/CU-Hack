@@ -8,7 +8,7 @@ const CORS_HEADERS = {
 };
 
 const ALPHA_RECIPE = {
-  id: "alpha/42",
+  id: "1001",
   title: "Lemon Chicken Bowl",
   image: "http://localhost:5173/fixtures/alpha.png",
   readyInMinutes: 25,
@@ -16,11 +16,14 @@ const ALPHA_RECIPE = {
   calories: 480,
   macros: { protein_g: 38, carbs_g: 42, fat_g: 14 },
   diets: ["gluten free"],
+  ingredients: ["1 cup quinoa", "1 lemon"],
+  instructions: ["Cook the quinoa.", "Top with lemon chicken."],
+  sourceName: "Example Kitchen",
   sourceUrl: "https://recipes.example/lemon-chicken",
 };
 
 const BETA_RECIPE = {
-  id: "beta-9002",
+  id: "9002",
   title: "Ginger Tofu Plate",
   image: "http://localhost:5173/fixtures/beta.png",
   readyInMinutes: 20,
@@ -28,6 +31,9 @@ const BETA_RECIPE = {
   calories: 510,
   macros: { protein_g: 31, carbs_g: 55, fat_g: 18 },
   diets: ["vegan"],
+  ingredients: ["8 oz tofu", "1 tbsp ginger"],
+  instructions: ["Sear the tofu.", "Add ginger sauce."],
+  sourceName: "Example Kitchen",
   sourceUrl: "https://recipes.example/ginger-tofu",
 };
 
@@ -63,9 +69,9 @@ async function installApiFixtures(
       [BETA_RECIPE.id, BETA_RECIPE],
     ]),
     goal = {
-      userId: "demo-user-1",
       rawText: "high protein, quick meals",
-      parsedFilter: { maxReadyTime: 30 },
+      parsedFilter: { maxReadyTime: 30, minProtein_g: 30 },
+      updatedAt: "2026-07-11T16:00:00.000Z",
     },
   } = {},
 ) {
@@ -75,6 +81,7 @@ async function installApiFixtures(
     savedGoals: [],
     swipes: [],
     detailIds: [],
+    recipeQueries: [],
   };
 
   await page.route(API_PATTERN, async (route) => {
@@ -94,7 +101,7 @@ async function installApiFixtures(
       const payload = request.postDataJSON();
       observed.parsedGoals.push(payload);
       await fulfillJson(route, {
-        parsedFilter: { diet: "vegan", maxReadyTime: 30, minProtein: 30 },
+        parsedFilter: { diet: "vegan", maxReadyTime: 30, minProtein_g: 30 },
       });
       return;
     }
@@ -102,7 +109,7 @@ async function installApiFixtures(
     if (method === "POST" && path === "/api/goal") {
       const payload = request.postDataJSON();
       observed.savedGoals.push(payload);
-      await fulfillJson(route, { ...goal, ...payload });
+      await fulfillJson(route, { success: true });
       return;
     }
 
@@ -112,7 +119,17 @@ async function installApiFixtures(
     }
 
     if (method === "GET" && path === "/api/recipes") {
-      await fulfillJson(route, { recipes });
+      const limit = Number(url.searchParams.get("limit"));
+      const offset = Number(url.searchParams.get("offset"));
+      observed.recipeQueries.push({
+        userId: url.searchParams.get("userId"),
+        limit,
+        offset,
+      });
+      await fulfillJson(route, {
+        recipes,
+        pagination: { limit, offset, count: recipes.length, hasMore: false },
+      });
       return;
     }
 
@@ -126,7 +143,7 @@ async function installApiFixtures(
 
     if (method === "POST" && path === "/api/swipe") {
       observed.swipes.push(request.postDataJSON());
-      await fulfillJson(route, { ok: true });
+      await fulfillJson(route, { success: true });
       return;
     }
 
@@ -172,7 +189,7 @@ test("completes goal entry, opens the exact liked card, and renders its full nut
   await page.getByRole("button", { name: "Start swiping" }).click();
 
   await expect(page).toHaveURL(/\/deck$/);
-  await expect(page.getByRole("status")).toContainText("1 of 2: Lemon Chicken Bowl");
+  await expect(page.getByRole("status")).toContainText("Match 1: Lemon Chicken Bowl");
   const activeCard = page.locator(".recipe-card-active");
   await expect(activeCard.getByRole("heading", { name: ALPHA_RECIPE.title })).toBeVisible();
   await expect(activeCard.getByRole("img", { name: ALPHA_RECIPE.title })).toHaveAttribute(
@@ -180,19 +197,18 @@ test("completes goal entry, opens the exact liked card, and renders its full nut
     ALPHA_RECIPE.image,
   );
 
-  await page.getByRole("button", { name: "View recipe" }).click();
-
-  await expect(page).toHaveURL(/\/recipe\/alpha%2F42$/);
-  await expect(page.getByRole("heading", { name: ALPHA_RECIPE.title, level: 1 })).toBeVisible();
-  await expect(page.getByText("Nutrition per serving")).toBeVisible();
-  await expect(page.getByText("480")).toBeVisible();
-  await expect(page.getByText("38")).toBeVisible();
-  await expect(page.getByText("42")).toBeVisible();
-  await expect(page.getByText("14")).toBeVisible();
-  await expect(page.getByRole("img", { name: ALPHA_RECIPE.title })).toHaveAttribute(
-    "src",
-    ALPHA_RECIPE.image,
+  await expect(page.getByRole("heading", { name: "Ingredients" })).toBeVisible();
+  await expect(page.getByText("Top with lemon chicken.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Source: Example Kitchen" })).toHaveAttribute(
+    "href",
+    ALPHA_RECIPE.sourceUrl,
   );
+
+  await page.getByRole("button", { name: "Like recipe" }).click();
+
+  await expect(page).toHaveURL(/\/deck$/);
+  await expect(page.getByRole("status")).toContainText("Match 2: Ginger Tofu Plate");
+  await expect(page.getByLabel("Nutrition per serving")).toBeVisible();
 
   expect(observed.parsedGoals).toEqual([
     { text: "vegan, high protein, under 30 minutes" },
@@ -201,13 +217,22 @@ test("completes goal entry, opens the exact liked card, and renders its full nut
     {
       userId: "demo-user-1",
       rawText: "vegan, high protein, under 30 minutes",
-      parsedFilter: { diet: "vegan", maxReadyTime: 30, minProtein: 30 },
+      parsedFilter: { diet: "vegan", maxReadyTime: 30, minProtein_g: 30 },
     },
   ]);
   expect(observed.swipes).toEqual([
-    { userId: "demo-user-1", recipeId: "alpha/42", direction: "right" },
+    { userId: "demo-user-1", recipeId: "1001", direction: "right" },
   ]);
-  expect(observed.detailIds).toEqual(["alpha/42"]);
+  expect(observed.detailIds).toEqual([]);
+  expect(observed.recipeQueries).toEqual([
+    { userId: "demo-user-1", limit: 10, offset: 0 },
+  ]);
+
+  expect(observed.recipeQueries).toHaveLength(1);
+
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText("Match 2: Ginger Tofu Plate");
+  expect(observed.recipeQueries).toHaveLength(1);
 });
 
 test("keeps the reliable deck controls inside a 1366 by 768 laptop viewport", async ({
@@ -216,7 +241,7 @@ test("keeps the reliable deck controls inside a 1366 by 768 laptop viewport", as
   await page.setViewportSize({ width: 1366, height: 768 });
   await installApiFixtures(page);
   await page.goto("/deck");
-  await expect(page.getByRole("status")).toContainText("1 of 2");
+  await expect(page.getByRole("status")).toContainText("Match 1");
 
   const actionsBox = await page.locator(".deck-actions").boundingBox();
   expect(actionsBox).not.toBeNull();
@@ -234,7 +259,7 @@ for (const viewport of [
   }) => {
     const layoutRecipe = {
       ...ALPHA_RECIPE,
-      id: "layout",
+      id: "7001",
       title: "AnExtraordinarilyLongUnbrokenRecipeTitleThatMustNeverEscapeTheViewport",
       calories: 987654321,
       macros: { protein_g: 123456789, carbs_g: 876543210, fat_g: 456789012 },
@@ -251,10 +276,10 @@ for (const viewport of [
     await expectNoHorizontalOverflow(page);
 
     await page.goto("/deck");
-    await expect(page.getByRole("status")).toContainText("1 of 1");
+    await expect(page.getByRole("status")).toContainText("Match 1");
     await expectNoHorizontalOverflow(page);
 
-    await page.goto("/recipe/layout");
+    await page.goto("/recipe/7001");
     await expect(page.getByRole("heading", { name: layoutRecipe.title, level: 1 })).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
@@ -289,7 +314,7 @@ test("honors reduced motion while retaining swipe behavior", async ({ page }) =>
   await page.emulateMedia({ reducedMotion: "reduce" });
   await installApiFixtures(page);
   await page.goto("/deck");
-  await expect(page.getByRole("status")).toContainText("1 of 2");
+  await expect(page.getByRole("status")).toContainText("Match 1");
 
   const motionState = await page.evaluate(() => {
     const workspace = document.querySelector(".deck-workspace");
@@ -313,13 +338,13 @@ test("honors reduced motion while retaining swipe behavior", async ({ page }) =>
   expect(Math.max(...motionState.transitionDurations)).toBeLessThanOrEqual(0.001);
 
   await page.getByRole("button", { name: "Skip recipe" }).click();
-  await expect(page.getByRole("status")).toContainText("2 of 2: Ginger Tofu Plate");
+  await expect(page.getByRole("status")).toContainText("Match 2: Ginger Tofu Plate");
 });
 
 test("shows accessible fallbacks when deck and detail images fail", async ({ page }) => {
   const brokenRecipe = {
     ...ALPHA_RECIPE,
-    id: "broken-image",
+    id: "8001",
     title: "Broken Image Bowl",
     image: "http://localhost:5173/fixtures/broken.png",
   };
@@ -334,7 +359,7 @@ test("shows accessible fallbacks when deck and detail images fail", async ({ pag
     page.getByRole("img", { name: "Broken Image Bowl image unavailable" }),
   ).toContainText("Recipe image unavailable");
 
-  await page.goto("/recipe/broken-image");
+  await page.goto("/recipe/8001");
   await expect(
     page.getByRole("img", { name: "Broken Image Bowl image unavailable" }),
   ).toContainText("Recipe image unavailable");

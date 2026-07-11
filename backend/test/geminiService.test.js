@@ -108,12 +108,13 @@ test("parseGoal uses the supported SDK, structured output, and a separate user i
   assert.doesNotMatch(request.config.systemInstruction, /IGNORE ALL RULES/);
   assert.equal(request.config.responseMimeType, "application/json");
   assert.deepEqual(request.config.responseJsonSchema, GOAL_FILTER_JSON_SCHEMA);
-  assert.equal(request.config.temperature, 0);
+  assert.deepEqual(request.config.thinkingConfig, { thinkingLevel: "MINIMAL" });
+  assert.equal(Object.hasOwn(request.config, "temperature"), false);
   assert.equal(request.config.maxOutputTokens, 512);
   assert.equal(typeof request.config.abortSignal.addEventListener, "function");
 });
 
-test("parseGoal defaults to gemini-3.5-flash and a 10 second deadline", async (t) => {
+test("parseGoal defaults to gemini-3.5-flash and a 30 second deadline", async (t) => {
   process.env.GEMINI_API_KEY = "test-key";
   process.env.GEMINI_TIMEOUT_MS = "not-a-number";
   let capturedTimeout;
@@ -122,16 +123,19 @@ test("parseGoal defaults to gemini-3.5-flash and a 10 second deadline", async (t
     return new AbortController().signal;
   });
   const capture = installSdkMock(async () => ({ text: "{}" }));
-  const { parseGoal, parseGoalWithGemini } = require("../src/services/geminiService");
+  const { DEFAULT_GEMINI_TIMEOUT_MS, parseGoal, parseGoalWithGemini } = require(
+    "../src/services/geminiService"
+  );
 
+  assert.equal(DEFAULT_GEMINI_TIMEOUT_MS, 30000);
   assert.equal(parseGoalWithGemini, parseGoal);
   assert.deepEqual(await parseGoal("just something tasty"), {});
   assert.deepEqual(capture.constructorOptions[0], {
     apiKey: "test-key",
-    httpOptions: { timeout: 10000 },
+    httpOptions: { timeout: 30000 },
   });
   assert.equal(capture.requests[0].model, "gemini-3.5-flash");
-  assert.equal(capturedTimeout, 10000);
+  assert.equal(capturedTimeout, 30000);
 });
 
 test("parseGoal maps empty, malformed, and non-object model output to a safe 502", async () => {

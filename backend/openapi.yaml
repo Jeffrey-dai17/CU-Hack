@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
-  title: Recipe Swipe Backend API
-  version: 1.0.0
+  title: Recipe Match Backend API
+  version: 1.1.0
   license:
     name: UNLICENSED
     identifier: LicenseRef-UNLICENSED
@@ -206,6 +206,7 @@ paths:
                   limit: 10
                   offset: 0
                   count: 0
+                  hasMore: false
         "400":
           $ref: "#/components/responses/BadRequest"
         "403":
@@ -312,7 +313,7 @@ components:
       name: id
       in: path
       required: true
-      description: Positive safe-integer Spoonacular recipe identifier.
+      description: Canonical positive safe-integer Spoonacular recipe identifier without leading zeroes.
       schema:
         type: string
         pattern: "^[1-9][0-9]*$"
@@ -437,17 +438,26 @@ components:
         - calories
         - macros
         - diets
+        - ingredients
+        - instructions
+        - sourceName
         - sourceUrl
       properties:
         id:
           type: string
           pattern: "^[1-9][0-9]*$"
+          maxLength: 32
+          description: >-
+            Canonical positive JavaScript-safe integer encoded as a string,
+            without leading zeroes.
         title:
           type: string
           minLength: 1
         image:
           type: string
-          description: Empty string when unavailable.
+          description: >-
+            Safe absolute HTTP(S) image URL without credentials. Empty string
+            when unavailable.
         readyInMinutes:
           type: [integer, "null"]
           minimum: 0
@@ -464,9 +474,26 @@ components:
           type: array
           items:
             type: string
+        ingredients:
+          type: array
+          description: Plain-text ingredient lines normalized from Spoonacular.
+          items:
+            type: string
+            minLength: 1
+        instructions:
+          type: array
+          description: Plain-text recipe steps normalized from Spoonacular.
+          items:
+            type: string
+            minLength: 1
+        sourceName:
+          type: string
+          description: Provider/source attribution label when available.
         sourceUrl:
           type: string
-          description: Empty string when unavailable.
+          description: >-
+            Safe absolute HTTP(S) source URL without credentials, using the
+            Spoonacular recipe page as a fallback. Empty string when unavailable.
     Macros:
       type: object
       additionalProperties: false
@@ -487,7 +514,7 @@ components:
     Pagination:
       type: object
       additionalProperties: false
-      required: [limit, offset, count]
+      required: [limit, offset, count, hasMore]
       properties:
         limit:
           type: integer
@@ -502,6 +529,12 @@ components:
           minimum: 0
           maximum: 20
           description: Number of recipes returned in this page, not total matches.
+        hasMore:
+          type: boolean
+          description: >-
+            Whether another page can be requested within the supported offset
+            range. This is based on Spoonacular pagination metadata or, when that
+            metadata is invalid, whether the raw provider page was full.
     RecipePage:
       type: object
       additionalProperties: false
@@ -529,7 +562,9 @@ components:
           type: string
           pattern: "^[1-9][0-9]*$"
           maxLength: 32
-          description: Positive JavaScript-safe integer encoded as a string.
+          description: >-
+            Canonical positive JavaScript-safe integer encoded as a string,
+            without leading zeroes.
         direction:
           type: string
           enum: [left, right]

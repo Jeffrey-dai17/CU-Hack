@@ -1,6 +1,6 @@
-# Recipe Swipe Backend
+# Recipe Match Backend
 
-Node/Express API for the recipe-swiping application. It turns a natural-language food goal into a validated filter with Gemini, searches Spoonacular, normalizes recipe and nutrition data for the frontend, and records goals and swipes in memory.
+Node/Express API for Recipe Match. It turns a natural-language food goal into a validated filter with Gemini, searches Spoonacular, normalizes recipe and nutrition data for the frontend, and records goals and swipes in memory.
 
 The API has no database and no authentication. All goals and swipes are process-local demo data and are erased whenever the server restarts.
 
@@ -45,12 +45,14 @@ Put real provider keys in `.env`. Never put keys in `.env.example`, frontend env
 | `PORT` | No | `3000` | HTTP port, integer `1..65535`. Invalid values stop startup. |
 | `GEMINI_API_KEY` | For goal parsing | None | Server-side Gemini API key. |
 | `GEMINI_MODEL` | No | `gemini-3.5-flash` | Gemini model used for structured goal parsing. |
-| `GEMINI_TIMEOUT_MS` | No | `10000` | Gemini timeout in milliseconds. Valid range `100..120000`; invalid values use the default. |
+| `GEMINI_TIMEOUT_MS` | No | `30000` | Gemini timeout in milliseconds. Valid range `100..120000`; invalid values use the default. |
 | `SPOONACULAR_API_KEY` | For recipes | None | Server-side Spoonacular API key. |
 | `SPOONACULAR_TIMEOUT_MS` | No | `8000` | Spoonacular timeout in milliseconds. Valid range `100..120000`; invalid values use the default. |
 | `CORS_ORIGINS` | No | Permissive | Comma-separated exact browser origins. Blank, unset, or any `*` allows every origin. |
 
 The checked-in example allows a Vite frontend at `http://localhost:5173`. Add other exact frontend origins as a comma-separated list, without paths or trailing slashes.
+
+Goal parsing uses Gemini's `MINIMAL` thinking level because this request is a small, schema-constrained classification task. The backend does not set sampling temperature, following the current Gemini 3.5 generation guidance.
 
 ## Commands
 
@@ -162,7 +164,7 @@ There is at most one current goal per `userId`; saving another replaces it. `upd
 }
 ```
 
-Nutrition values are rounded and represent one serving. Unknown numeric provider values are `null`, not zero. Missing `image` and `sourceUrl` values are empty strings, and missing `diets` is an empty array. The detail route intentionally returns the same stable shape as search results.
+Nutrition values are rounded and represent one serving. Unknown numeric provider values are `null`, not zero. Image and instruction links are retained only when they are absolute HTTP(S) URLs without credentials. When the original `sourceUrl` is missing or unsafe, a safe `spoonacularSourceUrl` is used as the instructions link. Missing `image` and `sourceUrl` values are empty strings, and missing `diets` is an empty array. The detail route intentionally returns the same stable shape as search results.
 
 ### Swipe
 
@@ -176,7 +178,7 @@ The accepted swipe values are:
 }
 ```
 
-`direction` is exactly `left` or `right` after trimming. `recipeId` is a positive JavaScript-safe integer string. The in-memory record also receives a server-generated `timestamp`; at most the latest 1,000 swipes are retained per user. No route exposes swipe history.
+`direction` is exactly `left` or `right` after trimming. `recipeId` is a canonical positive JavaScript-safe integer string with no leading zeroes. The in-memory record also receives a server-generated `timestamp`; at most the latest 1,000 swipes are retained per user. No route exposes swipe history.
 
 ## Endpoints
 
@@ -286,23 +288,26 @@ Success:
   "pagination": {
     "limit": 10,
     "offset": 0,
-    "count": 0
+    "count": 0,
+    "hasMore": false
   }
 }
 ```
 
-`count` is the number of recipes in this page, not a total result count. Request the next page with `offset + limit`; normalized invalid provider rows may be filtered, so advancing by `count` could repeat raw results. Stop when `count` is lower than `limit`.
+`count` is the number of normalized recipes in this page, not a total result count. `hasMore` is the continuation signal clients should use: it uses Spoonacular's `totalResults` when valid and otherwise conservatively treats a full raw provider page as potentially having another page. It is always `false` when another request would exceed the supported maximum offset. Request the next page only when `hasMore` is `true`, using `offset + limit`; advancing by `count` could repeat raw results when invalid provider rows were removed.
+
+Recipe search and detail responses are not cached by this process. Clients should retain deliberate in-session deck state so route changes do not repeat provider calls unnecessarily.
 
 Returns `503` without `SPOONACULAR_API_KEY`, `502` for provider or response failures, and `504` on timeout.
 
 ### `GET /api/recipes/:id`
 
-Returns one Recipe directly. `id` must be a positive JavaScript-safe integer. A missing provider recipe returns `404`; provider/configuration failures use the same `502`/`503`/`504` mapping as search.
+Returns one Recipe directly. `id` must be a canonical positive JavaScript-safe integer without leading zeroes. A missing provider recipe returns `404`; provider/configuration failures use the same `502`/`503`/`504` mapping as search.
 
 ### `POST /api/swipe`
 
 Record one in-memory swipe. `userId` is required and at most 128 characters. `recipeId`
-must be a positive JavaScript-safe integer string, and `direction` must be `left` or
+must be a canonical positive JavaScript-safe integer string without leading zeroes, and `direction` must be `left` or
 `right` after trimming.
 
 Request:

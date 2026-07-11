@@ -4,7 +4,10 @@ import {
   formatMacro,
   formatServings,
   formatTime,
+  getSafeHttpUrl,
+  isUsableRecipe,
   normalizeImageUrl,
+  normalizeRecipeId,
 } from "./recipe.js";
 
 describe("recipe formatting", () => {
@@ -77,10 +80,43 @@ describe("recipe formatting", () => {
     expect(normalizeImageUrl("   ")).toBe("");
   });
 
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,unsafe",
+    "//images.example/relative.jpg",
+    "/relative.jpg",
+    "https://user:password@images.example/private.jpg",
+  ])("rejects an unsafe image URL: %s", (value) => {
+    expect(normalizeImageUrl(value)).toBe("");
+    expect(getSafeHttpUrl(value)).toBe("");
+  });
+
   it.each([undefined, null, 42, {}, []])(
     "rejects non-string image URL value %s",
     (value) => {
       expect(normalizeImageUrl(value)).toBe("");
     },
   );
+
+  it.each([
+    ["1", "1"],
+    ["9007199254740991", "9007199254740991"],
+    [" 12345 ", "12345"],
+    ["0", ""],
+    ["01", ""],
+    ["-1", ""],
+    ["alpha/42", ""],
+    ["9007199254740992", ""],
+    [12345, ""],
+  ])("normalizes canonical recipe id %j", (value, expected) => {
+    expect(normalizeRecipeId(value)).toBe(expected);
+  });
+
+  it("accepts only object recipes with canonical string ids", () => {
+    expect(isUsableRecipe({ id: "12345" })).toBe(true);
+    expect(isUsableRecipe({ id: 12345 })).toBe(false);
+    expect(isUsableRecipe({ id: "alpha" })).toBe(false);
+    expect(isUsableRecipe([])).toBe(false);
+    expect(isUsableRecipe(null)).toBe(false);
+  });
 });

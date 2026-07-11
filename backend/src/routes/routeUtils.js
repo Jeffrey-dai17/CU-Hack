@@ -52,7 +52,7 @@ function requirePositiveRecipeId(value, field = "recipeId") {
   });
   const parsed = Number(normalized);
 
-  if (!/^\d+$/.test(normalized) || !Number.isSafeInteger(parsed) || parsed < 1) {
+  if (!/^[1-9]\d*$/.test(normalized) || !Number.isSafeInteger(parsed)) {
     throw createHttpError(400, `${field} must be a positive integer`);
   }
 
