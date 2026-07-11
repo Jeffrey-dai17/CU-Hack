@@ -10,6 +10,7 @@ const swipeRoutesPath = require.resolve("../src/routes/swipeRoutes");
 const routeUtilsPath = require.resolve("../src/routes/routeUtils");
 const geminiServicePath = require.resolve("../src/services/geminiService");
 const goalFilterPath = require.resolve("../src/services/goalFilter");
+const recipeCategoriesPath = require.resolve("../src/services/recipeCategories");
 const spoonacularServicePath = require.resolve("../src/services/spoonacularService");
 const memoryStorePath = require.resolve("../src/store/memoryStore");
 
@@ -32,6 +33,7 @@ function clearAppModules() {
     routeUtilsPath,
     geminiServicePath,
     goalFilterPath,
+    recipeCategoriesPath,
     spoonacularServicePath,
     memoryStorePath,
   ]) {
@@ -421,6 +423,11 @@ test("body, query, identifier, direction, and pagination validation reject bad i
       400,
       { error: "offset must be provided once" }
     );
+    assertResponse(
+      await request(baseUrl, "/api/recipes?userId=user&category=high-protein&category=low-calorie"),
+      400,
+      { error: "category must be provided once" }
+    );
     assert.equal(searchCalls, 0);
 
     for (const [id, message] of [
@@ -472,6 +479,46 @@ test("body, query, identifier, direction, and pagination validation reject bad i
   });
 });
 
+test("recipe category filters merge with the current goal", async () => {
+  const searchCalls = [];
+  const app = loadApp({
+    searchRecipes: async (filter, pagination) => {
+      searchCalls.push({ filter, pagination });
+      return [recipeFixture("303", { title: "Protein Bowl" })];
+    },
+  });
+
+  await withTestServer(app, async (baseUrl) => {
+    assertResponse(
+      await postJson(baseUrl, "/api/goal", {
+        userId: "demo-user-1",
+        rawText: "quick bowls",
+        parsedFilter: { maxCalories: 700, minProtein_g: 20, maxReadyTime: 45 },
+      }),
+      200,
+      { success: true }
+    );
+
+    const recipes = await request(
+      baseUrl,
+      "/api/recipes?userId=demo-user-1&limit=2&category=high-protein"
+    );
+    assert.equal(recipes.status, 200);
+    assert.deepEqual(searchCalls, [
+      {
+        filter: { maxCalories: 700, minProtein_g: 30, maxReadyTime: 45 },
+        pagination: { limit: 2, offset: 0 },
+      },
+    ]);
+
+    assertResponse(
+      await request(baseUrl, "/api/recipes?userId=demo-user-1&category=dessert"),
+      400,
+      { error: "category must be a supported recipe category" }
+    );
+    assert.equal(searchCalls.length, 1);
+  });
+});
 test("recipe pagination defaults are passed to the provider and returned to clients", async () => {
   const calls = [];
   const app = loadApp({

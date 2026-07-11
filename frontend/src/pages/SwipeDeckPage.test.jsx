@@ -7,7 +7,7 @@ import {
   readDeckSession,
   writeDeckSession,
 } from "../utils/deckSession.js";
-import { clearLikedRecipes, getLikedRecipes } from "../utils/likedRecipes.js";
+import { clearLikedRecipes, DEMO_LIKED_RECIPE, getLikedRecipes } from "../utils/likedRecipes.js";
 import SwipeDeckPage from "./SwipeDeckPage.jsx";
 
 const apiMocks = vi.hoisted(() => ({
@@ -308,7 +308,7 @@ describe("SwipeDeckPage", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Match 2: Ginger Tofu Plate");
     expect(routerMocks.navigate).not.toHaveBeenCalled();
     expect(readDeckSession("demo-user-1", GOAL_UPDATED_AT)).toMatchObject({ currentIndex: 1 });
-    expect(getLikedRecipes("demo-user-1")).toEqual([FIRST_RECIPE]);
+    expect(getLikedRecipes("demo-user-1")).toEqual([FIRST_RECIPE, DEMO_LIKED_RECIPE]);
   });
 
   it("does not save a left-swiped (skipped) recipe as liked", async () => {
@@ -318,9 +318,72 @@ describe("SwipeDeckPage", () => {
     await user.click(screen.getByRole("button", { name: "Skip recipe" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Match 2: Ginger Tofu Plate");
-    expect(getLikedRecipes("demo-user-1")).toEqual([]);
+    expect(getLikedRecipes("demo-user-1")).toEqual([DEMO_LIKED_RECIPE]);
   });
 
+  it("supports arrow-key swipes without bypassing persistence", async () => {
+    await renderLoadedDeck();
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+
+    await waitFor(() => {
+      expect(apiMocks.logSwipe).toHaveBeenCalledWith(
+        "demo-user-1",
+        "1001",
+        "right",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("Match 2: Ginger Tofu Plate");
+    expect(getLikedRecipes("demo-user-1")).toEqual([FIRST_RECIPE, DEMO_LIKED_RECIPE]);
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+
+    await waitFor(() => {
+      expect(apiMocks.logSwipe).toHaveBeenLastCalledWith(
+        "demo-user-1",
+        "9002",
+        "left",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+  });
+
+  it("keeps arrow keys inside the category dropdown from swiping", async () => {
+    await renderLoadedDeck();
+
+    fireEvent.keyDown(screen.getByLabelText("Category"), { key: "ArrowRight" });
+
+    expect(apiMocks.logSwipe).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("Match 1: Lemon Chicken Bowl");
+  });
+
+  it("reloads the deck with the selected recipe category", async () => {
+    const user = userEvent.setup();
+    apiMocks.getRecipes
+      .mockResolvedValueOnce(recipePage([FIRST_RECIPE]))
+      .mockResolvedValueOnce(recipePage([THIRD_RECIPE]));
+
+    renderDeck();
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Match 1: Lemon Chicken Bowl");
+    await user.selectOptions(screen.getByLabelText("Category"), "high-protein");
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Match 1: Sesame Tempeh Plate");
+    });
+    expect(apiMocks.getRecipes).toHaveBeenLastCalledWith(
+      "demo-user-1",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        params: { limit: 10, offset: 0, category: "high-protein" },
+      }),
+    );
+    expect(readDeckSession("demo-user-1", `${GOAL_UPDATED_AT}::category:high-protein`)).toMatchObject({
+      currentIndex: 0,
+      recipes: [THIRD_RECIPE],
+    });
+  });
   it("navigates to the liked recipes page from the deck header", async () => {
     const user = userEvent.setup();
     await renderLoadedDeck();

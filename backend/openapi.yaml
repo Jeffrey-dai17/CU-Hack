@@ -193,6 +193,7 @@ paths:
         - $ref: "#/components/parameters/UserId"
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/RecipeCategory"
       responses:
         "200":
           description: One normalized page of recipes.
@@ -309,6 +310,22 @@ components:
         minimum: 0
         maximum: 900
         default: 0
+    RecipeCategory:
+      name: category
+      in: query
+      required: false
+      description: Optional feed refinement selected from the deck category dropdown.
+      schema:
+        type: string
+        enum:
+          - low-calorie
+          - high-protein
+          - under-30-mins
+          - vegetarian
+          - vegan
+          - gluten-free
+          - keto
+      example: high-protein
     RecipeIdPath:
       name: id
       in: path

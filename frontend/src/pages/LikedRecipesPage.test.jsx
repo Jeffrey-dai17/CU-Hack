@@ -44,17 +44,19 @@ describe("LikedRecipesPage", () => {
     window.sessionStorage.clear();
   });
 
-  it("shows an empty state and a way back to the deck when nothing is liked", async () => {
+  it("shows the pinned demo recipe even before the user swipes", async () => {
     const user = userEvent.setup();
     renderLikedPage();
 
     expect(screen.getByRole("heading", { name: "Your liked recipes" })).toBeInTheDocument();
-    expect(screen.getByText("Nothing liked yet this session.")).toBeVisible();
-    expect(
-      screen.getByText("Swipe right on a recipe you like and it'll show up here."),
-    ).toBeVisible();
+    expect(screen.getByText("1 recipe you've liked this session.")).toBeVisible();
+    expect(screen.getByRole("link", { name: /5-minute Ricotta Garlic Herb Dip/ })).toHaveAttribute(
+      "href",
+      "/recipe/1697679",
+    );
+    expect(screen.queryByText("Nothing liked yet this session.")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Start swiping" }));
+    await user.click(screen.getByRole("button", { name: "Back to deck" }));
     expect(screen.getByRole("heading", { name: "Deck destination" })).toBeInTheDocument();
   });
 
@@ -64,11 +66,12 @@ describe("LikedRecipesPage", () => {
 
     renderLikedPage();
 
-    expect(screen.getByText("2 recipes you've liked this session.")).toBeVisible();
+    expect(screen.getByText("3 recipes you've liked this session.")).toBeVisible();
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(2);
+    expect(links).toHaveLength(3);
     expect(links[0]).toHaveTextContent("Ginger Tofu Plate");
     expect(links[1]).toHaveTextContent("Lemon Chicken Bowl");
+    expect(links[2]).toHaveTextContent("5-minute Ricotta Garlic Herb Dip");
     expect(links[0]).toHaveAttribute("href", "/recipe/9002");
     expect(screen.getByText("510 kcal")).toBeVisible();
   });

@@ -2,8 +2,45 @@ import { isUsableRecipe } from "./recipe.js";
 
 const STORAGE_PREFIX = "recipe-match:liked:v1:";
 const MAX_LIKED_RECIPES = 200;
+const DEMO_USER_ID = "demo-user-1";
 const memorySnapshots = new Map();
 const memoryFallbackKeys = new Set();
+
+export const DEMO_LIKED_RECIPE = Object.freeze({
+  id: "1697679",
+  title: "5-minute Ricotta Garlic Herb Dip",
+  image: "https://img.spoonacular.com/recipes/1697679-556x370.jpg",
+  readyInMinutes: 5,
+  servings: 2,
+  calories: 537,
+  macros: {
+    protein_g: 31,
+    carbs_g: 12,
+    fat_g: 41,
+  },
+  diets: ["gluten free", "lacto ovo vegetarian", "primal", "ketogenic"],
+  ingredients: [
+    "15 oz (400 g) ricotta cheese",
+    "1/2 c (150 g) Greek yogurt",
+    "2 Tbsp extra-virgin olive oil (plus extra to drizzle)",
+    "1 Tbsp lemon juice",
+    "2 cloves garlic, finely chopped",
+    "1 c fresh basil, chopped",
+    "1/2 c fresh parsley, chopped",
+    "1 Tbsp sage, chopped",
+    "1/2 tsp pepper",
+    "1 tsp salt (to taste)",
+  ],
+  instructions: [
+    "Mix ricotta cheese, Greek yogurt, extra-virgin olive oil, lemon juice, and season with salt and pepper",
+    "Taste, add more of any of the above to your liking",
+    "Add garlic, basil, parsley, and sage",
+    "Taste, add salt and pepper if necessary",
+    "Mix well, drizzle some extra-virgin olive oil on top, and serve with your favorite dippers",
+  ],
+  sourceName: "Maplewood Road",
+  sourceUrl: "https://maplewoodroad.com/5-minute-ricotta-garlic-herb-dip/",
+});
 
 function getStorageKey(userId) {
   return `${STORAGE_PREFIX}${encodeURIComponent(userId)}`;
@@ -11,6 +48,10 @@ function getStorageKey(userId) {
 
 function hasValidUserId(userId) {
   return typeof userId === "string" && userId.trim() !== "";
+}
+
+function getPinnedLikedRecipes(userId) {
+  return userId.trim() === DEMO_USER_ID ? [DEMO_LIKED_RECIPE] : [];
 }
 
 function normalizeList(value) {
@@ -30,6 +71,10 @@ function normalizeList(value) {
   }
 
   return recipes.slice(0, MAX_LIKED_RECIPES);
+}
+
+function withPinnedLikedRecipes(userId, list) {
+  return normalizeList([...list, ...getPinnedLikedRecipes(userId)]) || [];
 }
 
 function cloneList(list) {
@@ -71,10 +116,10 @@ export function getLikedRecipes(userId) {
     const rawValue = window.sessionStorage.getItem(key);
     if (rawValue == null) {
       if (memoryFallbackKeys.has(key)) {
-        return readMemoryList(key);
+        return withPinnedLikedRecipes(userId, readMemoryList(key));
       }
       memorySnapshots.delete(key);
-      return [];
+      return withPinnedLikedRecipes(userId, []);
     }
 
     const list = normalizeList(JSON.parse(rawValue));
@@ -84,10 +129,10 @@ export function getLikedRecipes(userId) {
       if (memoryList.length) {
         memoryFallbackKeys.add(key);
       }
-      return memoryList;
+      return withPinnedLikedRecipes(userId, memoryList);
     }
     rememberList(key, list);
-    return cloneList(list) || [];
+    return withPinnedLikedRecipes(userId, cloneList(list) || []);
   } catch {
     try {
       window.sessionStorage.removeItem(key);
@@ -98,7 +143,7 @@ export function getLikedRecipes(userId) {
     if (memoryList.length) {
       memoryFallbackKeys.add(key);
     }
-    return memoryList;
+    return withPinnedLikedRecipes(userId, memoryList);
   }
 }
 

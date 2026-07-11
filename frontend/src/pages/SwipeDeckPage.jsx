@@ -11,6 +11,10 @@ import { USER_ID } from "../constants.js";
 import { readDeckSession, writeDeckSession } from "../utils/deckSession.js";
 import { addLikedRecipe } from "../utils/likedRecipes.js";
 import {
+  RECIPE_CATEGORIES,
+  normalizeRecipeCategoryId,
+} from "../utils/recipeCategories.js";
+import {
   formatCalories,
   formatMacro,
   formatServings,
@@ -24,6 +28,23 @@ import "./SwipeDeckPage.css";
 
 const PAGE_SIZE = 10;
 const MAX_RECIPE_OFFSET = 900;
+
+function createDeckSessionKey(goalUpdatedAt, categoryId) {
+  return categoryId ? `${goalUpdatedAt}::category:${categoryId}` : goalUpdatedAt;
+}
+
+function createRecipePageParams(offset, categoryId) {
+  const params = { limit: PAGE_SIZE, offset };
+  if (categoryId) params.category = categoryId;
+  return params;
+}
+
+function isKeyboardCaptureTarget(target) {
+  return Boolean(
+    target instanceof Element &&
+      target.closest("input, textarea, select, button, [contenteditable='true']"),
+  );
+}
 
 function createEmptyDeck() {
   return {
@@ -90,6 +111,7 @@ function SwipeDeckPage() {
   const [loadMoreError, setLoadMoreError] = useState("");
   const [swipeRequest, setSwipeRequest] = useState(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const isMountedRef = useRef(true);
   const deckRef = useRef(deck);
   const requestNumberRef = useRef(0);
@@ -133,6 +155,10 @@ function SwipeDeckPage() {
       setErrorMessage("");
       setSwipeError("");
       setLoadMoreError("");
+      pageRequestControllerRef.current?.abort();
+      pageRequestControllerRef.current = null;
+      loadMoreInFlightRef.current = false;
+      setIsLoadingMore(false);
 
       try {
         const goal = await getCurrentGoal(USER_ID, { signal: controller.signal });
@@ -150,20 +176,21 @@ function SwipeDeckPage() {
           throw new Error("The saved goal is missing its version");
         }
 
-        const cachedDeck = readDeckSession(USER_ID, goalUpdatedAt);
+        const deckSessionKey = createDeckSessionKey(goalUpdatedAt, selectedCategoryId);
+        const cachedDeck = readDeckSession(USER_ID, deckSessionKey);
         if (cachedDeck) {
-          commitDeck({ ...cachedDeck, goalUpdatedAt });
+          commitDeck({ ...cachedDeck, goalUpdatedAt: deckSessionKey });
           return;
         }
 
         const response = await getRecipes(USER_ID, {
           signal: controller.signal,
-          params: { limit: PAGE_SIZE, offset: 0 },
+          params: createRecipePageParams(0, selectedCategoryId),
         });
         if (!isCurrent) return;
 
         const page = normalizeRecipePage(response, 0);
-        commitDeck({ ...page, currentIndex: 0, goalUpdatedAt });
+        commitDeck({ ...page, currentIndex: 0, goalUpdatedAt: deckSessionKey });
       } catch (error) {
         if (isCurrent && !controller.signal.aborted) {
           deckRef.current = createEmptyDeck();
@@ -183,7 +210,7 @@ function SwipeDeckPage() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [commitDeck, loadAttempt, navigate]);
+  }, [commitDeck, loadAttempt, navigate, selectedCategoryId]);
 
   const loadMoreRecipes = useCallback(async () => {
     const snapshot = deckRef.current;
@@ -211,7 +238,7 @@ function SwipeDeckPage() {
     try {
       const response = await getRecipes(USER_ID, {
         signal: controller.signal,
-        params: { limit: PAGE_SIZE, offset: requestedOffset },
+        params: createRecipePageParams(requestedOffset, selectedCategoryId),
       });
       const page = normalizeRecipePage(response, requestedOffset);
 
@@ -248,7 +275,7 @@ function SwipeDeckPage() {
         setIsLoadingMore(false);
       }
     }
-  }, [commitDeck]);
+  }, [commitDeck, selectedCategoryId]);
 
   const { recipes, currentIndex, hasMore } = deck;
 
@@ -352,6 +379,56 @@ function SwipeDeckPage() {
 
   const handleSwipeStart = useCallback(() => setIsSwiping(true), []);
   const handleSwipeSettled = useCallback(() => setIsSwiping(false), []);
+  const handleCategoryChange = useCallback((event) => {
+    const nextCategoryId = normalizeRecipeCategoryId(event.target.value);
+    if (nextCategoryId === selectedCategoryId) return;
+    pageRequestControllerRef.current?.abort();
+    pageRequestControllerRef.current = null;
+    loadMoreInFlightRef.current = false;
+    setSelectedCategoryId(nextCategoryId);
+    setSwipeRequest(null);
+    setIsSwiping(false);
+    setSwipeError("");
+    setLoadMoreError("");
+  }, [selectedCategoryId]);
+  const clearCategoryFilter = useCallback(() => {
+    if (!selectedCategoryId) return;
+    pageRequestControllerRef.current?.abort();
+    pageRequestControllerRef.current = null;
+    loadMoreInFlightRef.current = false;
+    setSelectedCategoryId("");
+    setSwipeRequest(null);
+    setIsSwiping(false);
+    setSwipeError("");
+    setLoadMoreError("");
+  }, [selectedCategoryId]);
+
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        isKeyboardCaptureTarget(event.target)
+      ) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        requestSwipe("left");
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        requestSwipe("right");
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [requestSwipe]);
+
   const goToGoalEntry = useCallback(() => navigate("/"), [navigate]);
   const goToLikedRecipes = useCallback(() => navigate("/liked"), [navigate]);
   const retryDeck = useCallback(() => {
@@ -391,10 +468,17 @@ function SwipeDeckPage() {
   if (recipes.length === 0 && !hasMore) {
     return (
       <DeckState eyebrow="No matches found" title="Try a different goal" headingRef={stateHeadingRef}>
-        <p>No usable recipes were found for this goal. Broaden your filters or try a different craving.</p>
-        <button type="button" className="deck-secondary-button" onClick={goToGoalEntry}>
-          Set a new goal
-        </button>
+        <p>{selectedCategoryId ? "No usable recipes were found in this category." : "No usable recipes were found for this goal. Broaden your filters or try a different craving."}</p>
+        <div className="deck-state-actions">
+          {selectedCategoryId ? (
+            <button type="button" className="deck-primary-button" onClick={clearCategoryFilter}>
+              Show all matches
+            </button>
+          ) : null}
+          <button type="button" className="deck-secondary-button" onClick={goToGoalEntry}>
+            Set a new goal
+          </button>
+        </div>
       </DeckState>
     );
   }
@@ -427,9 +511,16 @@ function SwipeDeckPage() {
     return (
       <DeckState eyebrow="All caught up" title="You've reached the end of this deck" headingRef={stateHeadingRef}>
         <p>Set a new food goal whenever you want to build a different deck.</p>
-        <button type="button" className="deck-secondary-button" onClick={goToGoalEntry}>
-          Set a new goal
-        </button>
+        <div className="deck-state-actions">
+          {selectedCategoryId ? (
+            <button type="button" className="deck-primary-button" onClick={clearCategoryFilter}>
+              Show all matches
+            </button>
+          ) : null}
+          <button type="button" className="deck-secondary-button" onClick={goToGoalEntry}>
+            Set a new goal
+          </button>
+        </div>
       </DeckState>
     );
   }
@@ -445,6 +536,21 @@ function SwipeDeckPage() {
           </p>
         </div>
         <div className="deck-header-actions">
+          <label className="deck-category-filter" htmlFor="deck-category-select">
+            <span>Category</span>
+            <select
+              id="deck-category-select"
+              value={selectedCategoryId}
+              onChange={handleCategoryChange}
+              disabled={isSwiping}
+            >
+              {RECIPE_CATEGORIES.map((category) => (
+                <option key={category.id || "all"} value={category.id}>
+                  {category.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             className="deck-secondary-button"
@@ -488,11 +594,11 @@ function SwipeDeckPage() {
         </div>
 
         <div className="deck-actions" aria-label="Swipe actions">
-          <button type="button" className="deck-skip-button" onClick={() => requestSwipe("left")} disabled={isSwiping} aria-label="Skip recipe">
-            <span aria-hidden="true">×</span>
+          <button type="button" className="deck-skip-button" onClick={() => requestSwipe("left")} disabled={isSwiping} aria-label="Skip recipe" aria-keyshortcuts="ArrowLeft">
+            <span aria-hidden="true">&times;</span>
           </button>
-          <button type="button" className="deck-like-button" onClick={() => requestSwipe("right")} disabled={isSwiping} aria-label="Like recipe">
-            <span aria-hidden="true">♥</span>
+          <button type="button" className="deck-like-button" onClick={() => requestSwipe("right")} disabled={isSwiping} aria-label="Like recipe" aria-keyshortcuts="ArrowRight">
+            <span aria-hidden="true">&hearts;</span>
           </button>
         </div>
 

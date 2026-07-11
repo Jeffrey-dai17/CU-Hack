@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addLikedRecipe, clearLikedRecipes, getLikedRecipes } from "./likedRecipes.js";
+import {
+  addLikedRecipe,
+  clearLikedRecipes,
+  DEMO_LIKED_RECIPE,
+  getLikedRecipes,
+} from "./likedRecipes.js";
 
 const USER_ID = "demo-user-1";
 const RECIPE_A = {
@@ -29,14 +34,14 @@ describe("liked recipes storage", () => {
     window.sessionStorage.clear();
   });
 
-  it("starts empty for a user with no likes", () => {
-    expect(getLikedRecipes(USER_ID)).toEqual([]);
+  it("starts with the demo recipe for the configured demo user", () => {
+    expect(getLikedRecipes(USER_ID)).toEqual([DEMO_LIKED_RECIPE]);
   });
 
-  it("adds a liked recipe and returns it newest-first", () => {
+  it("adds liked recipes newest-first ahead of the pinned demo recipe", () => {
     expect(addLikedRecipe(USER_ID, RECIPE_A)).toBe(true);
     expect(addLikedRecipe(USER_ID, RECIPE_B)).toBe(true);
-    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_B, RECIPE_A]);
+    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_B, RECIPE_A, DEMO_LIKED_RECIPE]);
   });
 
   it("dedupes by recipe id and moves the repeat like to the front", () => {
@@ -44,38 +49,38 @@ describe("liked recipes storage", () => {
     addLikedRecipe(USER_ID, RECIPE_B);
     addLikedRecipe(USER_ID, RECIPE_A);
 
-    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_A, RECIPE_B]);
+    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_A, RECIPE_B, DEMO_LIKED_RECIPE]);
   });
 
   it("rejects unusable recipes and missing user ids without throwing", () => {
     expect(addLikedRecipe(USER_ID, { id: "not-numeric" })).toBe(false);
     expect(addLikedRecipe(USER_ID, null)).toBe(false);
     expect(addLikedRecipe("", RECIPE_A)).toBe(false);
-    expect(getLikedRecipes(USER_ID)).toEqual([]);
+    expect(getLikedRecipes(USER_ID)).toEqual([DEMO_LIKED_RECIPE]);
   });
 
   it("keeps liked lists isolated per user", () => {
     addLikedRecipe(USER_ID, RECIPE_A);
     addLikedRecipe("another-user", RECIPE_B);
 
-    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_A]);
+    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_A, DEMO_LIKED_RECIPE]);
     expect(getLikedRecipes("another-user")).toEqual([RECIPE_B]);
   });
 
-  it("clears only the selected user's liked recipes", () => {
+  it("clears only user-added liked recipes for the selected user", () => {
     addLikedRecipe(USER_ID, RECIPE_A);
     addLikedRecipe("another-user", RECIPE_B);
 
     expect(clearLikedRecipes(USER_ID)).toBe(true);
-    expect(getLikedRecipes(USER_ID)).toEqual([]);
+    expect(getLikedRecipes(USER_ID)).toEqual([DEMO_LIKED_RECIPE]);
     expect(getLikedRecipes("another-user")).toEqual([RECIPE_B]);
   });
 
-  it("removes corrupt JSON and safely returns no likes", () => {
+  it("removes corrupt JSON and safely returns the pinned demo recipe", () => {
     const key = "recipe-match:liked:v1:demo-user-1";
     window.sessionStorage.setItem(key, "{not json");
 
-    expect(getLikedRecipes(USER_ID)).toEqual([]);
+    expect(getLikedRecipes(USER_ID)).toEqual([DEMO_LIKED_RECIPE]);
     expect(window.sessionStorage.getItem(key)).toBeNull();
   });
 
@@ -84,7 +89,7 @@ describe("liked recipes storage", () => {
     addLikedRecipe(USER_ID, RECIPE_A);
     window.sessionStorage.setItem(key, "{not json");
 
-    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_A]);
+    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_A, DEMO_LIKED_RECIPE]);
     expect(window.sessionStorage.getItem(key)).toBeNull();
   });
 
@@ -100,11 +105,11 @@ describe("liked recipes storage", () => {
     });
 
     expect(addLikedRecipe(USER_ID, RECIPE_A)).toBe(false);
-    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_A]);
+    expect(getLikedRecipes(USER_ID)).toEqual([RECIPE_A, DEMO_LIKED_RECIPE]);
     expect(clearLikedRecipes(USER_ID)).toBe(false);
 
     vi.restoreAllMocks();
-    expect(getLikedRecipes(USER_ID)).toEqual([]);
+    expect(getLikedRecipes(USER_ID)).toEqual([DEMO_LIKED_RECIPE]);
   });
 
   it("rejects a missing user id for clear", () => {

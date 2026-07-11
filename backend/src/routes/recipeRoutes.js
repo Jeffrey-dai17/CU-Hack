@@ -1,10 +1,15 @@
 const express = require("express");
 
 const { getRecipeById, searchRecipePage } = require("../services/spoonacularService");
+const {
+  mergeRecipeCategoryFilter,
+  normalizeRecipeCategory,
+} = require("../services/recipeCategories");
 const { getGoal } = require("../store/memoryStore");
 const {
   USER_ID_MAX_LENGTH,
   asyncRoute,
+  createHttpError,
   parseIntegerQuery,
   requireBoundedString,
   requirePositiveRecipeId,
@@ -32,11 +37,16 @@ router.get(
       max: 900,
       defaultValue: 0,
     });
+    const category = normalizeRecipeCategory(
+      requireSingleQueryValue(req.query, "category")
+    );
+    if (category === null) {
+      throw createHttpError(400, "category must be a supported recipe category");
+    }
+
     const goal = getGoal(userId);
-    const { recipes, hasMore } = await searchRecipePage(goal?.parsedFilter || {}, {
-      limit,
-      offset,
-    });
+    const filter = mergeRecipeCategoryFilter(goal?.parsedFilter || {}, category);
+    const { recipes, hasMore } = await searchRecipePage(filter, { limit, offset });
 
     return res.json({
       recipes,
