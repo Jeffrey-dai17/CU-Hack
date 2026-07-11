@@ -1,0 +1,135 @@
+.goal-entry-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top left, rgba(94, 155, 89, 0.18), transparent 34%),
+    linear-gradient(135deg, #fbfaf6 0%, #f1eadf 100%);
+}
+
+.goal-entry-panel {
+  width: min(100%, 760px);
+}
+
+.goal-entry-eyebrow {
+  margin: 0 0 16px;
+  color: #527245;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.goal-entry-panel h1 {
+  max-width: 720px;
+  color: #18231b;
+  font-size: clamp(2.6rem, 7vw, 5.6rem);
+  line-height: 0.96;
+  margin: 0;
+}
+
+.goal-entry-subheading {
+  max-width: 560px;
+  margin: 24px 0 0;
+  color: #4f5f52;
+  font-size: clamp(1.1rem, 2vw, 1.3rem);
+  line-height: 1.5;
+}
+
+.goal-entry-form {
+  margin-top: 40px;
+}
+
+.goal-entry-form label {
+  display: block;
+  margin-bottom: 10px;
+  color: #27362b;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.goal-entry-row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.goal-entry-row input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #d6cec0;
+  border-radius: 8px;
+  padding: 18px 20px;
+  color: #17211b;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 16px 40px rgba(43, 38, 28, 0.08);
+  font: inherit;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.goal-entry-row input:focus {
+  border-color: #5f8f50;
+  box-shadow: 0 0 0 4px rgba(95, 143, 80, 0.18), 0 16px 40px rgba(43, 38, 28, 0.08);
+}
+
+.goal-entry-row input:disabled {
+  color: #69736b;
+  background: #f0ece4;
+}
+
+.goal-entry-row button {
+  border: 0;
+  border-radius: 8px;
+  padding: 0 26px;
+  color: #ffffff;
+  background: #253f2b;
+  box-shadow: 0 16px 30px rgba(37, 63, 43, 0.22);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease, opacity 150ms ease;
+  white-space: nowrap;
+}
+
+.goal-entry-row button:hover:not(:disabled) {
+  background: #315638;
+  transform: translateY(-1px);
+}
+
+.goal-entry-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.goal-entry-status,
+.goal-entry-error {
+  margin: 16px 0 0;
+  line-height: 1.5;
+}
+
+.goal-entry-status {
+  color: #527245;
+  font-weight: 700;
+}
+
+.goal-entry-error {
+  color: #9d2d25;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .goal-entry-page {
+    align-items: start;
+    padding: 40px 18px;
+  }
+
+  .goal-entry-row {
+    flex-direction: column;
+  }
+
+  .goal-entry-row button {
+    min-height: 58px;
+  }
+}
