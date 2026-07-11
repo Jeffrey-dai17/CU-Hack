@@ -1,0 +1,616 @@
+openapi: 3.1.0
+info:
+  title: Recipe Swipe Backend API
+  version: 1.0.0
+  license:
+    name: UNLICENSED
+    identifier: LicenseRef-UNLICENSED
+  description: |
+    Backend contract for natural-language goal parsing, in-memory goal and swipe
+    storage, and normalized Spoonacular recipe data. The API has no authentication
+    and all stored state is erased on process restart.
+servers:
+  - url: /api
+    description: API path on the selected backend origin
+tags:
+  - name: Operations
+    description: Process liveness and configuration readiness.
+  - name: Goals
+    description: Natural-language goal parsing and current-goal storage.
+  - name: Recipes
+    description: Normalized Spoonacular search and detail data.
+  - name: Swipes
+    description: In-memory recipe preference recording.
+security: []
+paths:
+  /health:
+    get:
+      tags: [Operations]
+      operationId: getHealth
+      summary: Check process liveness
+      description: Does not validate configuration or contact providers.
+      responses:
+        "200":
+          description: The process can serve HTTP requests.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+              example:
+                ok: true
+        "403":
+          $ref: "#/components/responses/CorsForbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /ready:
+    get:
+      tags: [Operations]
+      operationId: getReadiness
+      summary: Check provider configuration readiness
+      description: |
+        Checks only whether both API key environment variables are nonblank. It
+        does not contact Gemini or Spoonacular. The same response schema is used
+        for ready and not-ready states.
+      responses:
+        "200":
+          description: Both provider keys are configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Readiness"
+              example:
+                ok: true
+                services:
+                  gemini: true
+                  spoonacular: true
+        "403":
+          $ref: "#/components/responses/CorsForbidden"
+        "503":
+          description: At least one provider key is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Readiness"
+              example:
+                ok: false
+                services:
+                  gemini: false
+                  spoonacular: true
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /parse-goal:
+    post:
+      tags: [Goals]
+      operationId: parseGoal
+      summary: Parse a natural-language food goal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ParseGoalRequest"
+            example:
+              text: vegan, no peanuts, under 600 calories
+      responses:
+        "200":
+          description: The normalized filter parsed by Gemini.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParseGoalResponse"
+              example:
+                parsedFilter:
+                  maxCalories: 600
+                  diet: vegan
+                  excludeIngredients: [peanuts]
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/CorsForbidden"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "504":
+          $ref: "#/components/responses/GatewayTimeout"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /goal:
+    post:
+      tags: [Goals]
+      operationId: saveGoal
+      summary: Save or replace a user's current goal
+      description: The saved goal is process-local and is erased on restart.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveGoalRequest"
+            example:
+              userId: demo-user-1
+              rawText: vegan, no peanuts, under 600 calories
+              parsedFilter:
+                maxCalories: 600
+                diet: vegan
+                excludeIngredients: [peanuts]
+      responses:
+        "200":
+          description: Goal saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/CorsForbidden"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /goal/current:
+    get:
+      tags: [Goals]
+      operationId: getCurrentGoal
+      summary: Get a user's current goal
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: The current goal, or JSON null when no goal is stored.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Goal"
+                  - type: "null"
+              examples:
+                found:
+                  value:
+                    rawText: vegan, no peanuts
+                    parsedFilter:
+                      diet: vegan
+                      excludeIngredients: [peanuts]
+                    updatedAt: "2026-07-11T16:00:00.000Z"
+                missing:
+                  value: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/CorsForbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recipes:
+    get:
+      tags: [Recipes]
+      operationId: searchRecipes
+      summary: Search recipes for a user's current goal
+      description: Uses an empty filter if the user has no saved goal.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: One normalized page of recipes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecipePage"
+              example:
+                recipes: []
+                pagination:
+                  limit: 10
+                  offset: 0
+                  count: 0
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/CorsForbidden"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "504":
+          $ref: "#/components/responses/GatewayTimeout"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /recipes/{id}:
+    get:
+      tags: [Recipes]
+      operationId: getRecipe
+      summary: Get one normalized recipe
+      parameters:
+        - $ref: "#/components/parameters/RecipeIdPath"
+      responses:
+        "200":
+          description: A normalized recipe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipe"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/CorsForbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "502":
+          $ref: "#/components/responses/UpstreamError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "504":
+          $ref: "#/components/responses/GatewayTimeout"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /swipe:
+    post:
+      tags: [Swipes]
+      operationId: addSwipe
+      summary: Record an in-memory swipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwipeRequest"
+            example:
+              userId: demo-user-1
+              recipeId: "12345"
+              direction: right
+      responses:
+        "200":
+          description: Swipe recorded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Success"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/CorsForbidden"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalError"
+components:
+  parameters:
+    UserId:
+      name: userId
+      in: query
+      required: true
+      description: Caller-supplied demo identity. It must be provided exactly once.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+      example: demo-user-1
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum recipes requested for this page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 10
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Zero-based Spoonacular result offset.
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 900
+        default: 0
+    RecipeIdPath:
+      name: id
+      in: path
+      required: true
+      description: Positive safe-integer Spoonacular recipe identifier.
+      schema:
+        type: string
+        pattern: "^[1-9][0-9]*$"
+        maxLength: 32
+      example: "12345"
+  schemas:
+    Health:
+      type: object
+      additionalProperties: false
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          const: true
+    Readiness:
+      type: object
+      additionalProperties: false
+      required: [ok, services]
+      properties:
+        ok:
+          type: boolean
+        services:
+          type: object
+          additionalProperties: false
+          required: [gemini, spoonacular]
+          properties:
+            gemini:
+              type: boolean
+            spoonacular:
+              type: boolean
+    ParseGoalRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Must contain a non-whitespace character after trimming.
+    ParseGoalResponse:
+      type: object
+      additionalProperties: false
+      required: [parsedFilter]
+      properties:
+        parsedFilter:
+          $ref: "#/components/schemas/GoalFilter"
+    GoalFilter:
+      type: object
+      additionalProperties: false
+      properties:
+        maxCalories:
+          type: integer
+          minimum: 1
+          maximum: 10000
+        minProtein_g:
+          type: integer
+          minimum: 0
+          maximum: 500
+        diet:
+          type: string
+          enum:
+            - gluten free
+            - ketogenic
+            - vegetarian
+            - lacto-vegetarian
+            - ovo-vegetarian
+            - vegan
+            - pescetarian
+            - paleo
+            - primal
+            - low fodmap
+            - whole30
+        maxReadyTime:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Minutes.
+        excludeIngredients:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 80
+          description: Entries are trimmed and deduplicated case-insensitively.
+    SaveGoalRequest:
+      type: object
+      required: [userId, rawText]
+      properties:
+        userId:
+          $ref: "#/components/schemas/UserId"
+        rawText:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Must contain a non-whitespace character after trimming.
+        parsedFilter:
+          $ref: "#/components/schemas/GoalFilter"
+    Goal:
+      type: object
+      additionalProperties: false
+      required: [rawText, parsedFilter, updatedAt]
+      properties:
+        rawText:
+          type: string
+          minLength: 1
+          maxLength: 1000
+        parsedFilter:
+          $ref: "#/components/schemas/GoalFilter"
+        updatedAt:
+          type: string
+          format: date-time
+    Recipe:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - image
+        - readyInMinutes
+        - servings
+        - calories
+        - macros
+        - diets
+        - sourceUrl
+      properties:
+        id:
+          type: string
+          pattern: "^[1-9][0-9]*$"
+        title:
+          type: string
+          minLength: 1
+        image:
+          type: string
+          description: Empty string when unavailable.
+        readyInMinutes:
+          type: [integer, "null"]
+          minimum: 0
+        servings:
+          type: [integer, "null"]
+          minimum: 0
+        calories:
+          type: [integer, "null"]
+          minimum: 0
+          description: Rounded calories per serving.
+        macros:
+          $ref: "#/components/schemas/Macros"
+        diets:
+          type: array
+          items:
+            type: string
+        sourceUrl:
+          type: string
+          description: Empty string when unavailable.
+    Macros:
+      type: object
+      additionalProperties: false
+      required: [protein_g, carbs_g, fat_g]
+      properties:
+        protein_g:
+          type: [integer, "null"]
+          minimum: 0
+          description: Rounded grams per serving.
+        carbs_g:
+          type: [integer, "null"]
+          minimum: 0
+          description: Rounded grams per serving.
+        fat_g:
+          type: [integer, "null"]
+          minimum: 0
+          description: Rounded grams per serving.
+    Pagination:
+      type: object
+      additionalProperties: false
+      required: [limit, offset, count]
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 20
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 900
+        count:
+          type: integer
+          minimum: 0
+          maximum: 20
+          description: Number of recipes returned in this page, not total matches.
+    RecipePage:
+      type: object
+      additionalProperties: false
+      required: [recipes, pagination]
+      properties:
+        recipes:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/Recipe"
+        pagination:
+          $ref: "#/components/schemas/Pagination"
+    UserId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      description: Must contain a non-whitespace character after trimming.
+    SwipeRequest:
+      type: object
+      required: [userId, recipeId, direction]
+      properties:
+        userId:
+          $ref: "#/components/schemas/UserId"
+        recipeId:
+          type: string
+          pattern: "^[1-9][0-9]*$"
+          maxLength: 32
+          description: Positive JavaScript-safe integer encoded as a string.
+        direction:
+          type: string
+          enum: [left, right]
+    Success:
+      type: object
+      additionalProperties: false
+      required: [success]
+      properties:
+        success:
+          type: boolean
+          const: true
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          minLength: 1
+  responses:
+    BadRequest:
+      description: Request validation failed or the JSON body is malformed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Invalid request
+    CorsForbidden:
+      description: The browser origin is not allowed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Origin not allowed by CORS
+    NotFound:
+      description: The requested recipe or API route was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Recipe not found
+    PayloadTooLarge:
+      description: The JSON request body exceeds 1 MiB.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Request body is too large
+    UpstreamError:
+      description: A provider failed or returned an invalid response.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Provider is temporarily unavailable
+    ServiceUnavailable:
+      description: A required provider is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Provider is not configured
+    GatewayTimeout:
+      description: A provider request exceeded its configured timeout.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Provider request timed out
+    InternalError:
+      description: An unexpected backend failure occurred.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+          example:
+            error: Unexpected server error
