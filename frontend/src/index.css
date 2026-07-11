@@ -1,0 +1,105 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #18231d;
+  background: #f8f3e9;
+  --font-heading: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --color-background: #f8f3e9;
+  --color-surface: #fffaf0;
+  --color-ink: #18231d;
+  --color-muted: #586957;
+  --color-border: rgba(65, 50, 34, 0.18);
+  --color-primary: #315f3f;
+  --color-primary-strong: #20462d;
+  --color-primary-soft: #dfead5;
+  --color-coral: #c94f38;
+  --color-coral-soft: #f6ddd5;
+  --color-gold: #c28b20;
+  --color-blue: #397f91;
+  --color-focus: #9e3f24;
+  --shadow-soft: 0 18px 50px rgba(61, 45, 24, 0.12);
+  --shadow-lift: 0 28px 80px rgba(44, 32, 17, 0.2);
+  --shadow-card: 0 30px 78px rgba(33, 29, 19, 0.25);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-pill: 999px;
+  --transition: 180ms ease;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: var(--color-background);
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: clip;
+  color: var(--color-ink);
+  background:
+    linear-gradient(115deg, rgba(216, 165, 59, 0.1), transparent 42%),
+    linear-gradient(245deg, rgba(49, 95, 63, 0.09), transparent 38%),
+    var(--color-background);
+}
+
+#root,
+main {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  margin-top: 0;
+  font-family: var(--font-heading);
+  letter-spacing: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, a, input):focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(255, 250, 240, 0.96);
+}
+
+main h1[tabindex="-1"]:focus {
+  outline: none;
+}
+
+@keyframes page-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

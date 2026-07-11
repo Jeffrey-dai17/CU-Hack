@@ -1,0 +1,48 @@
+.not-found-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: clamp(20px, 4vw, 48px);
+}
+
+.not-found-panel {
+  width: min(100%, 680px);
+  min-width: 0;
+}
+
+.not-found-eyebrow {
+  margin: 0 0 12px;
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.not-found-panel h1 {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: clamp(2.5rem, 6vw, 4.75rem);
+  line-height: 0.98;
+  overflow-wrap: anywhere;
+}
+
+.not-found-panel p:not(.not-found-eyebrow) {
+  max-width: 560px;
+  margin: 20px 0 24px;
+  color: var(--color-muted);
+  font-size: 1.08rem;
+  line-height: 1.6;
+}
+
+.not-found-panel a {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  padding: 0 18px;
+  color: #ffffff;
+  background: var(--color-primary-strong);
+  font-weight: 850;
+  text-decoration: none;
+}
