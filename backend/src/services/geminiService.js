@@ -10,18 +10,27 @@ const MAX_GOAL_TEXT_LENGTH = 1000;
 
 const SYSTEM_INSTRUCTION = [
   "Convert a food-related goal into a recipe search filter.",
+  "First interpret the user's whole message semantically, including indirect or conversational phrasing, before classifying each constraint. Do not return that reasoning.",
   "Return only fields that the user clearly implies. An unconstrained goal must return an empty object.",
-  "maxReadyTime is measured in minutes. minProtein_g is measured in grams.",
+  "Use query for a specific dish, ingredient, flavor, or style the person is craving; do not repeat broad diet, cuisine, meal, allergy, time, or nutrition constraints in query unless an unsupported culture needs a natural-language query.",
+  "maxReadyTime is measured in minutes. Calories, protein, and carbohydrates use per-serving values; protein and carbohydrate fields are measured in grams.",
   "Map diet intent to the closest value allowed by the response schema; omit diet when none fits.",
+  "Map one or more requested food cultures to cuisines. Correct clear spelling variants, recognize indirect culture language such as 'take me to Tokyo' as Japanese, and map a more specific culture to its closest supported broad cuisine when clear. Preserve explicit alternatives: 'Chinese or Italian' must return both cuisines, not choose one.",
+  "Map breakfast, brunch, and morning food to mealType breakfast; lunch, dinner, supper, hearty, or main meals to mealType main course; and sweets, after-dinner treats, or desserts to mealType dessert.",
+  "Treat allergies as hard constraints. Add every matching supported intolerances value and explicit ingredient exclusions; for a non-standard allergy, exclude every clear recipe ingredient it requires avoiding. Never claim the results are medically safe or complete—users must still verify ingredient labels and cross-contact risk.",
   "Examples:",
   'Input: "cutting carbs, high protein, something quick"',
-  'Output: {"minProtein_g": 30, "maxReadyTime": 30}',
+  'Output: {"maxCarbs_g": 50, "minProtein_g": 30, "maxReadyTime": 30}',
   'Input: "vegan, no peanuts, under 600 calories"',
   'Output: {"diet": "vegan", "excludeIngredients": ["peanuts"], "maxCalories": 600}',
   'Input: "just something tasty"',
   "Output: {}",
   'Input: "keto, dinner in under an hour"',
-  'Output: {"diet": "ketogenic", "maxReadyTime": 60}',
+  'Output: {"diet": "ketogenic", "mealType": "main course", "maxReadyTime": 60}',
+  'Input: "I want something cozy from Japan for dessert, but I am allergic to peanuts"',
+  'Output: {"query": "cozy", "cuisines": ["japanese"], "mealType": "dessert", "intolerances": ["peanut"], "excludeIngredients": ["peanuts"]}',
+  'Input: "Chinese or Italian, but I cannot eat strawberries"',
+  'Output: {"cuisines": ["chinese", "italian"], "excludeIngredients": ["strawberries"]}',
 ].join("\n");
 
 class GeminiServiceError extends Error {

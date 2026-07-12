@@ -87,12 +87,19 @@ test("searchRecipes sends canonical filters, pagination, enrichment, and a deadl
   const { searchRecipes } = loadService();
   const recipes = await searchRecipes(
     {
+      query: "  cozy ramen  ",
+      cuisines: [" Japanese ", "Italian", "japanese"],
+      mealType: " Main Course ",
+      minCalories: 425,
       maxCalories: 500,
       minProtein_g: 30,
+      maxProtein_g: 45,
+      minCarbs_g: 40,
+      maxCarbs_g: 60,
       maxReadyTime: 3.5,
       diet: " Vegan ",
+      intolerances: [" Peanut ", "SHELLFISH", "peanut"],
       excludeIngredients: [" peanuts ", "PEANUTS", null, "shellfish"],
-      query: "ignored",
     },
     { limit: 7, offset: 20 }
   );
@@ -106,9 +113,20 @@ test("searchRecipes sends canonical filters, pagination, enrichment, and a deadl
   assert.equal(requestedUrl.searchParams.get("addRecipeInstructions"), "true");
   assert.equal(requestedUrl.searchParams.get("addRecipeNutrition"), "true");
   assert.equal(requestedUrl.searchParams.get("fillIngredients"), "true");
+  assert.equal(requestedUrl.searchParams.get("instructionsRequired"), "true");
+  assert.equal(requestedUrl.searchParams.get("sort"), "popularity");
+  assert.equal(requestedUrl.searchParams.get("sortDirection"), "desc");
+  assert.equal(requestedUrl.searchParams.get("query"), "cozy ramen");
+  assert.equal(requestedUrl.searchParams.get("cuisine"), "japanese,italian");
+  assert.equal(requestedUrl.searchParams.get("type"), "main course");
+  assert.equal(requestedUrl.searchParams.get("minCalories"), "425");
   assert.equal(requestedUrl.searchParams.get("maxCalories"), "500");
   assert.equal(requestedUrl.searchParams.get("minProtein"), "30");
+  assert.equal(requestedUrl.searchParams.get("maxProtein"), "45");
+  assert.equal(requestedUrl.searchParams.get("minCarbs"), "40");
+  assert.equal(requestedUrl.searchParams.get("maxCarbs"), "60");
   assert.equal(requestedUrl.searchParams.get("diet"), "vegan");
+  assert.equal(requestedUrl.searchParams.get("intolerances"), "peanut,shellfish");
   assert.equal(requestedUrl.searchParams.get("excludeIngredients"), "peanuts,shellfish");
   assert.equal(requestedUrl.searchParams.has("maxReadyTime"), false);
   assert.deepEqual(requestedOptions.headers, { Accept: "application/json" });
@@ -189,6 +207,38 @@ test("searchRecipes never returns more rows than the requested limit", async () 
     ["1", "2"]
   );
   assert.equal(page.hasMore, true);
+});
+
+test("searchRecipePage prioritizes image-backed, highly scored recipes within a provider page", async () => {
+  process.env.SPOONACULAR_API_KEY = "spoon-key";
+  global.fetch = async () =>
+    jsonResponse({
+      results: [
+        { id: 1, title: "No image despite a score", spoonacularScore: 99, aggregateLikes: 1_000 },
+        {
+          id: 2,
+          title: "Good image, lower score",
+          image: "https://img.spoonacular.com/recipes/2-312x231.jpg",
+          spoonacularScore: 62,
+          aggregateLikes: 2_000,
+        },
+        {
+          id: 3,
+          title: "Exceptional image-backed recipe",
+          image: "https://img.spoonacular.com/recipes/3-312x231.jpg",
+          spoonacularScore: 91,
+          aggregateLikes: 400,
+          healthScore: 70,
+          veryPopular: true,
+        },
+      ],
+    });
+
+  const { searchRecipePage } = loadService();
+  const page = await searchRecipePage({}, { limit: 3, offset: 0 });
+
+  assert.deepEqual(page.recipes.map((recipe) => recipe.id), ["3", "2", "1"]);
+  assert.match(page.recipes[0].image, /3-556x370/);
 });
 
 test("searchRecipePage derives continuation from provider totals, raw rows, and offset bounds", async () => {

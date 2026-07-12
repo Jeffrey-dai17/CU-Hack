@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const API_ORIGIN = "http://localhost:3000";
+const API_ORIGIN = `http://localhost:${process.env.FULLSTACK_BACKEND_PORT || "3000"}`;
 const API_PREFIX = `${API_ORIGIN}/api`;
 const OBSERVATION_URL = `${API_ORIGIN}/__recipe_match_fullstack__/state`;
 const USER_ID = "demo-user-1";
@@ -50,9 +50,7 @@ test("runs the complete browser flow through the real Express API", async ({ pag
   });
 
   await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "What are you in the mood for today?" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Dishly home" })).toBeVisible();
   expect(browserApiCalls).toEqual([]);
 
   await page.getByRole("textbox", { name: "Your food goal" }).fill(GOAL_TEXT);

@@ -25,6 +25,8 @@ const routerMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
 }));
 
+const DEMO_RECIPE_MATCH = expect.objectContaining({ id: "1697679" });
+
 vi.mock("../api/client.js", () => ({
   getApiErrorMessage(error, fallback) {
     const message = error?.response?.data?.error;
@@ -47,18 +49,67 @@ vi.mock("framer-motion", async (importOriginal) => {
   const actual = await importOriginal();
   const React = await import("react");
 
-  const MockArticle = React.forwardRef(function MockArticle(props, ref) {
-    return React.createElement(
-      "article",
-      {
-        ref,
-        className: props.className,
-        "aria-labelledby": props["aria-labelledby"],
-        onDragEnd: props.onDragEnd,
+  // Motion-only props that must never reach a real DOM node.
+  const MOTION_PROPS = new Set([
+    "initial",
+    "animate",
+    "exit",
+    "transition",
+    "variants",
+    "custom",
+    "style",
+    "layout",
+    "layoutId",
+    "layoutScroll",
+    "layoutDependency",
+    "drag",
+    "dragConstraints",
+    "dragElastic",
+    "dragMomentum",
+    "dragTransition",
+    "dragSnapToOrigin",
+    "dragPropagation",
+    "whileHover",
+    "whileTap",
+    "whileFocus",
+    "whileDrag",
+    "whileInView",
+    "viewport",
+    "onViewportEnter",
+    "onViewportLeave",
+    "onAnimationStart",
+    "onAnimationComplete",
+    "onUpdate",
+    "onDrag",
+    "onDragStart",
+    "transformTemplate",
+  ]);
+
+  // A generic motion.<tag> factory: renders the underlying element with only
+  // DOM-safe props, so the redesigned deck can use any motion primitive.
+  const motion = new Proxy(
+    {},
+    {
+      get(_target, tag) {
+        return React.forwardRef(function MockMotion(props, ref) {
+          const domProps = {};
+          for (const key of Object.keys(props)) {
+            if (key === "children" || MOTION_PROPS.has(key)) continue;
+            domProps[key] = props[key];
+          }
+          return React.createElement(
+            typeof tag === "string" ? tag : "div",
+            { ref, ...domProps },
+            props.children,
+          );
+        });
       },
-      props.children,
-    );
-  });
+    },
+  );
+
+  function AnimatePresence({ children }) {
+    return React.createElement(React.Fragment, null, children);
+  }
 
   function useMotionValue(initialValue) {
     const valueRef = React.useRef(initialValue);
@@ -70,6 +121,7 @@ vi.mock("framer-motion", async (importOriginal) => {
         set: (nextValue) => {
           valueRef.current = nextValue;
         },
+        on: () => () => {},
       };
     }
 
@@ -79,7 +131,8 @@ vi.mock("framer-motion", async (importOriginal) => {
   return {
     ...actual,
     animate: motionMocks.animate,
-    motion: { article: MockArticle },
+    motion,
+    AnimatePresence,
     useMotionValue,
     useReducedMotion: motionMocks.prefersReducedMotion,
     useTransform: (value) => value,
@@ -308,7 +361,7 @@ describe("SwipeDeckPage", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Match 2: Ginger Tofu Plate");
     expect(routerMocks.navigate).not.toHaveBeenCalled();
     expect(readDeckSession("demo-user-1", GOAL_UPDATED_AT)).toMatchObject({ currentIndex: 1 });
-    expect(getLikedRecipes("demo-user-1")).toEqual([FIRST_RECIPE]);
+    expect(getLikedRecipes("demo-user-1")).toEqual([FIRST_RECIPE, DEMO_RECIPE_MATCH]);
   });
 
   it("does not save a left-swiped (skipped) recipe as liked", async () => {
@@ -318,16 +371,30 @@ describe("SwipeDeckPage", () => {
     await user.click(screen.getByRole("button", { name: "Skip recipe" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Match 2: Ginger Tofu Plate");
-    expect(getLikedRecipes("demo-user-1")).toEqual([]);
+    expect(getLikedRecipes("demo-user-1")).toEqual([DEMO_RECIPE_MATCH]);
   });
 
   it("navigates to the liked recipes page from the deck header", async () => {
     const user = userEvent.setup();
     await renderLoadedDeck();
 
+    expect(screen.getByRole("link", { name: "Dishly home" })).toHaveAttribute("href", "/");
+    expect(document.querySelector(".deck-brand img")).toHaveAttribute(
+      "src",
+      "/images/dishly-logo-hero.png",
+    );
+
     await user.click(screen.getByRole("button", { name: "Liked recipes" }));
 
     expect(routerMocks.navigate).toHaveBeenCalledWith("/liked");
+  });
+
+  it("keeps swipe controls focused without rendering an instructional footer", async () => {
+    await renderLoadedDeck();
+
+    expect(screen.queryByText("Drag the card, tap a button, or press")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Skip recipe" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Like recipe" })).toBeVisible();
   });
 
   it("keeps actions locked through a failed right swipe's return animation", async () => {
@@ -569,5 +636,46 @@ describe("SwipeDeckPage", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent("Match 2: Ginger Tofu Plate");
     expect(motionMocks.animate).not.toHaveBeenCalled();
+  });
+
+  it("likes the current recipe with the ArrowRight shortcut", async () => {
+    await renderLoadedDeck();
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Match 2: Ginger Tofu Plate");
+    expect(getLikedRecipes("demo-user-1")).toEqual([FIRST_RECIPE, DEMO_RECIPE_MATCH]);
+    expect(apiMocks.logSwipe).toHaveBeenCalledWith(
+      "demo-user-1",
+      "1001",
+      "right",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("skips the current recipe with the ArrowLeft shortcut without liking it", async () => {
+    await renderLoadedDeck();
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Match 2: Ginger Tofu Plate");
+    expect(getLikedRecipes("demo-user-1")).toEqual([DEMO_RECIPE_MATCH]);
+  });
+
+  it("ignores arrow shortcuts with modifier keys or while typing in a field", async () => {
+    await renderLoadedDeck();
+
+    fireEvent.keyDown(window, { key: "ArrowRight", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "ArrowLeft", metaKey: true });
+    fireEvent.keyDown(window, { key: "ArrowUp" });
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    fireEvent.keyDown(input, { key: "ArrowLeft" });
+    input.remove();
+
+    expect(screen.getByRole("status")).toHaveTextContent("Match 1: Lemon Chicken Bowl");
+    expect(apiMocks.logSwipe).not.toHaveBeenCalled();
   });
 });

@@ -7,16 +7,21 @@
   padding: 32px 36px 64px;
   color: var(--color-ink);
   background: linear-gradient(135deg, #fffaf0 0%, #eef3e9 56%, #f4ebdd 100%);
+  background-size: 150% 150%;
+  animation: ambient-background 14s var(--ease-in-out-soft) infinite alternate;
 }
 
 .recipe-detail-shell {
   width: min(100%, 1120px);
   min-width: 0;
   margin: 0 auto;
-  animation: page-rise-in 500ms ease both;
+  animation: slide-in-right 500ms var(--ease-out-expo) both;
 }
 
 .recipe-detail-nav {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
   min-width: 0;
   min-height: 56px;
   display: flex;
@@ -24,11 +29,13 @@
   justify-content: space-between;
   gap: 20px;
   margin-bottom: 18px;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(229, 196, 110, 0.28);
   border-radius: var(--radius-pill);
   padding: 6px 10px 6px 18px;
-  background: rgba(255, 250, 240, 0.92);
-  box-shadow: 0 10px 28px rgba(61, 45, 24, 0.08);
+  background: rgba(13, 25, 17, 0.9);
+  box-shadow: 0 14px 32px rgba(13, 25, 17, 0.25);
+  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  backdrop-filter: saturate(1.4) blur(14px);
 }
 
 .recipe-detail-back-link,
@@ -49,7 +56,7 @@
 .recipe-detail-back-link {
   min-height: 44px;
   min-width: 0;
-  color: var(--color-primary-strong);
+  color: #f8f5ed;
 }
 
 .recipe-detail-back-link span {
@@ -74,7 +81,7 @@
 
 .recipe-detail-brand {
   flex: none;
-  white-space: nowrap;
+  width: 128px;
 }
 
 .recipe-detail-article,
@@ -95,12 +102,25 @@
   height: clamp(240px, 40vw, 440px);
   border-radius: 28px;
   box-shadow: var(--shadow-lift);
+  animation: hero-reveal 720ms var(--ease-out-expo) both;
 }
 
 .recipe-detail-image {
   display: block;
   object-fit: cover;
   background: #dfe5dc;
+}
+
+@keyframes hero-reveal {
+  from {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .recipe-detail-image-fallback {
@@ -170,6 +190,12 @@
   line-height: 1.2;
   letter-spacing: 0;
   overflow-wrap: anywhere;
+  transition: transform var(--dur-fast) var(--ease-out-back), box-shadow var(--dur-fast) ease;
+}
+
+.recipe-detail-diets li:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(32, 70, 45, 0.16);
 }
 
 .recipe-detail-nutrition {
@@ -208,12 +234,39 @@
   border-top: 1px solid rgba(255, 255, 255, 0.16);
 }
 
+/*
+ * The tone accent stays on the top border (as the original design), and hover
+ * adds a layout-free glow. Note: this element must remain `position: static`.
+ * Making it positioned causes Chromium to report the overflowing number in
+ * `scrollWidth`, which the giant-number containment e2e explicitly guards.
+ */
 .recipe-detail-stat {
   min-width: 0;
   min-height: 174px;
   padding: 28px 22px 30px;
   border-top: 4px solid transparent;
   background: rgba(255, 255, 255, 0.035);
+  transition: background var(--dur-med) ease, box-shadow var(--dur-med) ease;
+}
+
+.recipe-detail-stat:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.recipe-detail-stat-coral:hover {
+  box-shadow: inset 0 4px 22px -6px var(--color-coral);
+}
+
+.recipe-detail-stat-green:hover {
+  box-shadow: inset 0 4px 22px -6px #8fbd73;
+}
+
+.recipe-detail-stat-gold:hover {
+  box-shadow: inset 0 4px 22px -6px var(--color-gold);
+}
+
+.recipe-detail-stat-blue:hover {
+  box-shadow: inset 0 4px 22px -6px var(--color-blue);
 }
 
 .recipe-detail-stat + .recipe-detail-stat {
@@ -255,13 +308,16 @@
 }
 
 .recipe-detail-stat strong {
+  flex: 1 1 auto;
   min-width: 0;
+  overflow: hidden;
   color: #ffffff;
   font-family: var(--font-heading);
   font-size: clamp(1.9rem, 3.4vw, 3rem);
   font-variant-numeric: tabular-nums;
   line-height: 0.9;
   letter-spacing: 0;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -311,6 +367,12 @@
   padding: 24px;
   background: rgba(255, 250, 240, 0.9);
   box-shadow: 0 14px 32px rgba(61, 45, 24, 0.08);
+  transition: transform var(--dur-med) var(--ease-out-expo), box-shadow var(--dur-med) ease;
+}
+
+.recipe-detail-text-section:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-hover);
 }
 
 .recipe-detail-text-section h2 {
@@ -337,26 +399,21 @@
 }
 
 .recipe-detail-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: var(--color-primary-strong);
   font-weight: 850;
+  transition: color var(--dur-fast) ease;
 }
 
 .recipe-detail-source-link span {
-  display: none;
+  display: inline-flex;
+  transition: transform var(--dur-fast) var(--ease-out-back);
 }
 
-.recipe-detail-primary-link {
-  border: 0;
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-strong) 100%);
-  box-shadow: 0 18px 34px rgba(32, 70, 45, 0.24);
-  font: inherit;
-  cursor: pointer;
-}
-
-.recipe-detail-primary-link:hover {
-  box-shadow: 0 22px 42px rgba(32, 70, 45, 0.3);
-  transform: translateY(-1px);
+.recipe-detail-source-link:hover span {
+  transform: translate(3px, -3px);
 }
 
 .recipe-detail-secondary-link {
@@ -375,12 +432,6 @@
 .recipe-detail-secondary-link:focus-visible {
   outline: 3px solid #163f28;
   outline-offset: 3px;
-}
-
-.recipe-detail-primary-link:focus-visible {
-  outline: 3px solid #ffffff;
-  outline-offset: 2px;
-  box-shadow: 0 0 0 6px #163f28, 0 18px 34px rgba(32, 70, 45, 0.24);
 }
 
 .recipe-detail-source-unavailable {
@@ -452,7 +503,7 @@
   }
 
   .recipe-detail-brand {
-    font-size: 0.7rem;
+    width: 106px;
   }
 
   .recipe-detail-image,
@@ -547,20 +598,29 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .recipe-detail-shell {
+  .recipe-detail-shell,
+  .recipe-detail-page,
+  .recipe-detail-image,
+  .recipe-detail-image-fallback {
     animation: none;
   }
 
   .recipe-detail-back-link,
   .recipe-detail-back-link span,
   .recipe-detail-primary-link,
-  .recipe-detail-secondary-link {
+  .recipe-detail-secondary-link,
+  .recipe-detail-diets li,
+  .recipe-detail-text-section,
+  .recipe-detail-source-link span {
     transition: none;
   }
 
   .recipe-detail-back-link:hover span,
   .recipe-detail-primary-link:hover,
-  .recipe-detail-secondary-link:hover {
+  .recipe-detail-secondary-link:hover,
+  .recipe-detail-diets li:hover,
+  .recipe-detail-text-section:hover,
+  .recipe-detail-source-link:hover span {
     transform: none;
   }
 }

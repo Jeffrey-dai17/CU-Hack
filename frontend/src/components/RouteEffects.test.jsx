@@ -14,11 +14,11 @@ function renderEffects(path, { includeHeading = true } = {}) {
 
 describe("RouteEffects", () => {
   it.each([
-    ["/", "Recipe Match"],
-    ["/deck", "Recipe Deck | Recipe Match"],
-    ["/liked", "Liked Recipes | Recipe Match"],
-    ["/recipe/abc-123", "Recipe | Recipe Match"],
-    ["/not-a-real-page", "Page Not Found | Recipe Match"],
+    ["/", "dishly"],
+    ["/deck", "dishly"],
+    ["/liked", "dishly"],
+    ["/recipe/abc-123", "dishly"],
+    ["/not-a-real-page", "dishly"],
   ])("sets the document title for %s", (path, expectedTitle) => {
     renderEffects(path);
 
@@ -48,7 +48,7 @@ describe("RouteEffects", () => {
     renderEffects("/missing", { includeHeading: false });
 
     await waitFor(() => {
-      expect(document.title).toBe("Page Not Found | Recipe Match");
+      expect(document.title).toBe("dishly");
     });
     expect(screen.getByText("No heading")).toBeInTheDocument();
   });

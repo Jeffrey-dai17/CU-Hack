@@ -1,0 +1,170 @@
+/*
+ * Shared button system.
+ *
+ * Base + variant + size classes. Flash (hover lift, shine sweep, press spring)
+ * lives here as CSS/Framer so it costs zero test coverage and is neutralized by
+ * the global prefers-reduced-motion rule in index.css.
+ */
+.ui-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  color: #fff;
+  font: inherit;
+  font-weight: 850;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  isolation: isolate;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-med) var(--ease-out-expo),
+    color var(--dur-fast) ease,
+    filter var(--dur-fast) ease;
+}
+
+.ui-btn__label,
+.ui-btn__icon,
+.ui-btn__spinner {
+  position: relative;
+  z-index: 1;
+}
+
+.ui-btn__icon {
+  display: inline-flex;
+  font-size: 1.15em;
+  line-height: 0;
+}
+
+/* Diagonal light sweep on hover. */
+.ui-btn__shine {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.42) 50%,
+    transparent 70%
+  );
+  transform: translateX(-140%) skewX(-18deg);
+  opacity: 0;
+}
+
+.ui-btn:hover:not(:disabled) .ui-btn__shine {
+  opacity: 1;
+  animation: shine-sweep 720ms var(--ease-out-expo);
+}
+
+.ui-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  filter: saturate(0.8);
+}
+
+/* ---- Variants ---- */
+.ui-btn--primary {
+  border-color: var(--color-primary-strong);
+  background: var(--gradient-green);
+  box-shadow: 0 14px 30px rgba(32, 70, 45, 0.24);
+}
+
+.ui-btn--primary:hover:not(:disabled) {
+  box-shadow: var(--shadow-glow-green);
+}
+
+.ui-btn--secondary {
+  border-color: var(--color-border);
+  color: var(--color-primary-strong);
+  background: rgba(255, 250, 240, 0.94);
+  box-shadow: 0 8px 20px rgba(61, 45, 24, 0.08);
+}
+
+.ui-btn--secondary:hover:not(:disabled) {
+  border-color: rgba(49, 95, 63, 0.4);
+  box-shadow: var(--shadow-hover);
+}
+
+.ui-btn--ghost {
+  color: var(--color-primary-strong);
+  background: transparent;
+}
+
+.ui-btn--ghost:hover:not(:disabled) {
+  background: rgba(49, 95, 63, 0.1);
+}
+
+.ui-btn--danger {
+  border-color: #9d2d25;
+  background: var(--gradient-coral);
+  box-shadow: 0 14px 30px rgba(201, 79, 56, 0.24);
+}
+
+.ui-btn--danger:hover:not(:disabled) {
+  box-shadow: var(--shadow-glow-coral);
+}
+
+/* ---- Sizes ---- */
+.ui-btn--sm {
+  min-height: 44px;
+  padding: 0 16px;
+  font-size: 0.92rem;
+}
+
+.ui-btn--md {
+  min-height: 50px;
+}
+
+.ui-btn--lg {
+  min-height: 58px;
+  padding: 0 30px;
+  border-radius: var(--radius-md);
+  font-size: 1.08rem;
+}
+
+.ui-btn--icon {
+  min-height: 48px;
+  width: 48px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+/* ---- Busy spinner ---- */
+.ui-btn.is-busy .ui-btn__label {
+  opacity: 0.72;
+}
+
+.ui-btn__spinner {
+  width: 1.05em;
+  height: 1.05em;
+  border-radius: 50%;
+  border: 2px solid currentcolor;
+  border-top-color: transparent;
+  animation: spinner-rotate 720ms linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-btn,
+  .ui-btn__shine {
+    transition: none;
+    animation: none;
+  }
+}

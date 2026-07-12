@@ -110,10 +110,14 @@ All properties are optional. An unconstrained goal is `{}`. Extra properties are
 
 ```json
 {
+  "query": "cozy ramen",
   "maxCalories": 600,
   "minProtein_g": 30,
   "diet": "vegan",
+  "cuisines": ["japanese", "italian"],
+  "mealType": "main course",
   "maxReadyTime": 30,
+  "intolerances": ["peanut", "shellfish"],
   "excludeIngredients": ["peanuts", "shellfish"]
 }
 ```
@@ -123,19 +127,30 @@ All properties are optional. An unconstrained goal is `{}`. Extra properties are
 | `maxCalories` | Integer `1..10000`. |
 | `minProtein_g` | Integer `0..500`. |
 | `diet` | `gluten free`, `ketogenic`, `vegetarian`, `lacto-vegetarian`, `ovo-vegetarian`, `vegan`, `pescetarian`, `paleo`, `primal`, `low fodmap`, or `whole30`. |
+| `query` | A specific craving such as a dish, ingredient, flavor, or style; nonblank string up to 160 characters. |
+| `cuisines` | One or more Spoonacular cultures, interpreted as OR alternatives: African, Asian, American, British, Cajun, Caribbean, Chinese, Eastern European, European, French, German, Greek, Indian, Irish, Italian, Japanese, Jewish, Korean, Latin American, Mediterranean, Mexican, Middle Eastern, Nordic, Southern, Spanish, Thai, or Vietnamese. Values are stored in lowercase, so “Chinese or Italian” searches both cultures. |
+| `mealType` | `breakfast`, `main course` (the app’s Lunch & dinner choice), or `dessert`. |
 | `maxReadyTime` | Integer minutes `1..1440`. |
+| `intolerances` | Up to the supported allergy categories: `dairy`, `egg`, `gluten`, `grain`, `peanut`, `seafood`, `sesame`, `shellfish`, `soy`, `sulfite`, `tree nut`, and `wheat`. Duplicate values are removed. |
 | `excludeIngredients` | At most 20 nonblank strings, each at most 80 characters. Duplicate names are removed case-insensitively. |
 
-Gemini output is normalized to this schema. Unsupported or invalid model-produced fields are dropped. A client-provided `parsedFilter` on `POST /api/goal` is validated strictly and returns `400` if invalid.
+Gemini first interprets the whole natural-language request, then independently classifies its craving, culture, meal, diet, allergy, time, and nutrition constraints into this schema. Culture and allergy entries are intentionally free-form: “Chinese or Italian” becomes two OR cuisines, while a non-standard allergy such as strawberry or alpha-gal is interpreted into explicit ingredient exclusions. Obvious spelling variants are normalized and a specific culture can map to its closest supported broad cuisine. For example, “take me to Tokyo for a sweet treat; I’m allergic to peanuts” becomes a Japanese dessert filter with the peanut intolerance and an explicit peanut exclusion. Unsupported or invalid model-produced fields are dropped. A client-provided `parsedFilter` on `POST /api/goal` is validated strictly and returns `400` if invalid.
+
+Allergy filtering narrows provider results; it does not certify a recipe as medically safe or account for cross-contact, substitutions, or incomplete provider data. People must inspect the final ingredient list and labels before eating.
+
+When searching, `query`, `cuisines`, `mealType`, `intolerances`, and `excludeIngredients` are all passed to Spoonacular’s Complex Search endpoint. Multiple cuisines are sent as OR alternatives. `intolerances` uses the provider’s ontology-aware safety filter; `excludeIngredients` remains available for any named ingredient outside that limited allergy vocabulary. The two are deliberately complementary for safety.
 
 ### Goal
 
 ```json
 {
-  "rawText": "vegan, no peanuts, under 600 calories",
+  "rawText": "cozy Japanese dessert, no peanuts, under 600 calories",
   "parsedFilter": {
+    "query": "cozy",
     "maxCalories": 600,
-    "diet": "vegan",
+    "cuisines": ["japanese", "italian"],
+    "mealType": "dessert",
+    "intolerances": ["peanut"],
     "excludeIngredients": ["peanuts"]
   },
   "updatedAt": "2026-07-11T16:00:00.000Z"
@@ -220,7 +235,7 @@ Request:
 
 ```json
 {
-  "text": "vegan, no peanuts, under 600 calories"
+  "text": "cozy Japanese dessert, no peanuts, under 600 calories"
 }
 ```
 
@@ -229,8 +244,11 @@ Success:
 ```json
 {
   "parsedFilter": {
+    "query": "cozy",
     "maxCalories": 600,
-    "diet": "vegan",
+    "cuisines": ["japanese", "italian"],
+    "mealType": "dessert",
+    "intolerances": ["peanut"],
     "excludeIngredients": ["peanuts"]
   }
 }
@@ -242,15 +260,22 @@ Returns `503` without `GEMINI_API_KEY`, `502` for provider or response failures,
 
 Save or replace the current in-memory goal for one user. `userId` is required and at most 128 characters. `rawText` is required and at most 1,000 characters. `parsedFilter` may be omitted, in which case it becomes `{}`.
 
+Nutrition filter fields are all per serving: `minCalories`/`maxCalories`,
+`minProtein_g`/`maxProtein_g`, and `minCarbs_g`/`maxCarbs_g`. When both bounds
+for a nutrient are present, the minimum must not exceed the maximum.
+
 Request:
 
 ```json
 {
   "userId": "demo-user-1",
-  "rawText": "vegan, no peanuts, under 600 calories",
+  "rawText": "cozy Japanese dessert, no peanuts, under 600 calories",
   "parsedFilter": {
+    "query": "cozy",
     "maxCalories": 600,
-    "diet": "vegan",
+    "cuisines": ["japanese", "italian"],
+    "mealType": "dessert",
+    "intolerances": ["peanut"],
     "excludeIngredients": ["peanuts"]
   }
 }
@@ -297,6 +322,12 @@ Success:
 `count` is the number of normalized recipes in this page, not a total result count. `hasMore` is the continuation signal clients should use: it uses Spoonacular's `totalResults` when valid and otherwise conservatively treats a full raw provider page as potentially having another page. It is always `false` when another request would exceed the supported maximum offset. Request the next page only when `hasMore` is `true`, using `offset + limit`; advancing by `count` could repeat raw results when invalid provider rows were removed.
 
 Recipe search and detail responses are not cached by this process. Clients should retain deliberate in-session deck state so route changes do not repeat provider calls unnecessarily.
+
+Search requests require recipe instructions and ask Spoonacular for descending
+popularity. Within each provider page, normalized recipes are ranked so
+image-backed recipes lead, then Spoonacular score, aggregate likes, health
+score, popularity flag, and available instructions break ties. This keeps the
+deck focused on complete, appealing recipes without making extra provider calls.
 
 Returns `503` without `SPOONACULAR_API_KEY`, `502` for provider or response failures, and `504` on timeout.
 

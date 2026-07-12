@@ -1,7 +1,10 @@
 const assert = require("node:assert/strict");
 const http = require("node:http");
 
-const PORT = 3000;
+const requestedPort = Number(process.env.FULLSTACK_BACKEND_PORT);
+const PORT = Number.isInteger(requestedPort) && requestedPort >= 1 && requestedPort <= 65535
+  ? requestedPort
+  : 3000;
 const HOST = "localhost";
 const USER_ID = "demo-user-1";
 const OBSERVATION_PATH = "/__recipe_match_fullstack__/state";
@@ -100,7 +103,7 @@ installModuleStub(spoonacularServicePath, {
   searchRecipes,
 });
 
-process.env.CORS_ORIGINS = "http://localhost:5173";
+process.env.CORS_ORIGINS = process.env.FULLSTACK_FRONTEND_ORIGIN || "http://localhost:5173";
 
 const app = require(serverPath);
 const { clearStore, getGoal, getSwipes } = require(memoryStorePath);

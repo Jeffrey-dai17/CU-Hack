@@ -1,0 +1,40 @@
+.brand-logo {
+  display: inline-flex;
+  width: 164px;
+  color: inherit;
+  text-decoration: none;
+  transform-origin: left center;
+  transition: filter var(--dur-fast) ease, transform var(--dur-med) var(--ease-out-back);
+}
+
+.brand-logo__crop {
+  display: block;
+  width: 100%;
+  line-height: 0;
+}
+
+.brand-logo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+}
+
+.brand-logo:hover {
+  filter: drop-shadow(0 7px 15px rgba(229, 196, 110, 0.22));
+  transform: translateY(-2px) scale(1.015);
+}
+
+.brand-logo:active {
+  transform: translateY(0) scale(0.98);
+}
+
+@media (max-width: 560px) {
+  .brand-logo { width: 132px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-logo { transition: none; }
+  .brand-logo:hover,
+  .brand-logo:active { transform: none; }
+}

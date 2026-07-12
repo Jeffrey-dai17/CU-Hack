@@ -81,6 +81,10 @@ test("parseGoal uses the supported SDK, structured output, and a separate user i
         maxCalories: 500,
         minProtein_g: "30",
         diet: " Vegan ",
+        query: "  ramen  ",
+        cuisines: [" Japanese ", "Italian", "japanese"],
+        mealType: " Dessert ",
+        intolerances: [" Peanut ", "peanut"],
         excludeIngredients: [" Peanuts ", "peanuts"],
         unknown: true,
       }),
@@ -96,8 +100,12 @@ test("parseGoal uses the supported SDK, structured output, and a separate user i
     { apiKey: "test-key", httpOptions: { timeout: 2500 } },
   ]);
   assert.deepEqual(parsed, {
+    query: "ramen",
     maxCalories: 500,
     diet: "vegan",
+    cuisines: ["japanese", "italian"],
+    mealType: "dessert",
+    intolerances: ["peanut"],
     excludeIngredients: ["Peanuts"],
   });
 
@@ -105,6 +113,11 @@ test("parseGoal uses the supported SDK, structured output, and a separate user i
   assert.equal(request.model, "gemini-custom-flash");
   assert.equal(request.contents, userInput);
   assert.match(request.config.systemInstruction, /cutting carbs, high protein, something quick/);
+  assert.match(request.config.systemInstruction, /interpret the user's whole message semantically/);
+  assert.match(request.config.systemInstruction, /take me to Tokyo/);
+  assert.match(request.config.systemInstruction, /Chinese or Italian/);
+  assert.match(request.config.systemInstruction, /Correct clear spelling variants/);
+  assert.match(request.config.systemInstruction, /cross-contact risk/);
   assert.doesNotMatch(request.config.systemInstruction, /IGNORE ALL RULES/);
   assert.equal(request.config.responseMimeType, "application/json");
   assert.deepEqual(request.config.responseJsonSchema, GOAL_FILTER_JSON_SCHEMA);

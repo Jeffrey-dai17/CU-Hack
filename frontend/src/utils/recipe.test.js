@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatCalories,
+  formatCaloriesForPeople,
   formatMacro,
   formatServings,
   formatTime,
@@ -25,6 +26,15 @@ describe("recipe formatting", () => {
       expect(formatCalories(value)).toBe("Calories N/A");
     },
   );
+
+  it.each([
+    [899, 3, 1, "300 kcal"],
+    [899, 3, 2, "599 kcal"],
+    [480, 2, 1, "240 kcal"],
+    [480, 0, 1, "480 kcal"],
+  ])("formats total recipe calories for %i of %i serving(s) and %i person/people", (calories, servings, people, expected) => {
+    expect(formatCaloriesForPeople(calories, servings, people)).toBe(expected);
+  });
 
   it.each([
     [0, "0g"],

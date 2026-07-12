@@ -39,9 +39,9 @@ function createDeferred() {
   return { promise, reject, resolve };
 }
 
-function renderGoalEntry() {
+function renderGoalEntry(initialEntries = ["/"]) {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={initialEntries}>
       <Routes>
         <Route path="/" element={<GoalEntryPage />} />
         <Route path="/deck" element={<h1>Recipe deck destination</h1>} />
@@ -58,15 +58,42 @@ describe("GoalEntryPage", () => {
     window.sessionStorage.clear();
   });
 
-  it("renders the prompt without making a request and keeps blank goals disabled", () => {
+  it("renders the logo-first search without making a request and keeps blank goals disabled", () => {
     renderGoalEntry();
 
-    expect(
-      screen.getByRole("heading", { name: "What are you in the mood for today?" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dishly recipe search" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dishly home" })).toBeInTheDocument();
+    expect(document.querySelector(".goal-entry-hero-brand img")).toHaveAttribute(
+      "src",
+      "/images/dishly-logo-hero.png",
+    );
+    expect(screen.getByLabelText("Your food goal")).toHaveAttribute(
+      "placeholder",
+      "What are you craving?",
+    );
+    expect(screen.getByRole("button", { name: "Open recipe filters" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start swiping" })).toBeDisabled();
     expect(parseGoal).not.toHaveBeenCalled();
     expect(saveGoal).not.toHaveBeenCalled();
+  });
+
+  it("offers a return to the active deck only when change goal opened this page", async () => {
+    const user = userEvent.setup();
+    renderGoalEntry([{ pathname: "/", state: { returnTo: "/deck" } }]);
+
+    await user.click(screen.getByRole("button", { name: "Back to deck" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Recipe deck destination" }),
+    ).toBeInTheDocument();
+    expect(parseGoal).not.toHaveBeenCalled();
+    expect(saveGoal).not.toHaveBeenCalled();
+  });
+
+  it("does not expose a deck return control on a normal landing visit", () => {
+    renderGoalEntry();
+
+    expect(screen.queryByRole("button", { name: "Back to deck" })).not.toBeInTheDocument();
   });
 
   it("trims the goal, parses before saving, and navigates only after both requests succeed", async () => {
@@ -111,6 +138,162 @@ describe("GoalEntryPage", () => {
     ]);
   });
 
+  it("merges optional per-serving nutrition targets into bounded recipe ranges", async () => {
+    const user = userEvent.setup();
+    parseGoal.mockResolvedValue({ parsedFilter: { diet: "vegan", maxReadyTime: 30 } });
+    saveGoal.mockResolvedValue({ success: true });
+
+    renderGoalEntry();
+    await user.type(screen.getByLabelText("Your food goal"), "quick vegan dinner");
+    await user.click(screen.getByRole("button", { name: "Open recipe filters" }));
+    await user.type(screen.getByLabelText("Calories"), "500");
+    await user.type(screen.getByLabelText("Protein"), "40");
+    await user.type(screen.getByLabelText("Carbs"), "60");
+    await user.click(screen.getByRole("button", { name: "Start swiping" }));
+
+    await waitFor(() =>
+      expect(saveGoal).toHaveBeenCalledWith(
+        USER_ID,
+        "quick vegan dinner",
+        {
+          diet: "vegan",
+          maxReadyTime: 30,
+          minCalories: 400,
+          maxCalories: 600,
+          minProtein_g: 32,
+          maxProtein_g: 48,
+          minCarbs_g: 48,
+          maxCarbs_g: 72,
+        },
+        expect.objectContaining({ signal: expect.any(Object) }),
+      ),
+    );
+  });
+
+  it("submits valid nutrition-only categories without calling the goal parser", async () => {
+    const user = userEvent.setup();
+    saveGoal.mockResolvedValue({ success: true });
+    renderGoalEntry();
+
+    await user.click(screen.getByRole("button", { name: "Open recipe filters" }));
+    await user.type(screen.getByLabelText("Calories"), "500");
+    await user.type(screen.getByLabelText("Protein"), "40");
+    expect(screen.getByRole("button", { name: "Start swiping" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Start swiping" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Recipe deck destination" }),
+    ).toBeInTheDocument();
+    expect(parseGoal).not.toHaveBeenCalled();
+    expect(saveGoal).toHaveBeenCalledWith(
+      USER_ID,
+      "Recipes around 500 calories, 40g protein per serving",
+      {
+        minCalories: 400,
+        maxCalories: 600,
+        minProtein_g: 32,
+        maxProtein_g: 48,
+      },
+      expect.objectContaining({ signal: expect.any(Object) }),
+    );
+  });
+
+  it("saves a direct meal category without parsing", async () => {
+    const user = userEvent.setup();
+    saveGoal.mockResolvedValue({ success: true });
+    renderGoalEntry();
+
+    await user.click(screen.getByRole("button", { name: "Open recipe filters" }));
+    await user.click(screen.getByRole("radio", { name: "Lunch & dinner" }));
+
+    expect(screen.getByRole("button", { name: "Start swiping" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Start swiping" }));
+
+    expect(parseGoal).not.toHaveBeenCalled();
+    expect(saveGoal).toHaveBeenCalledWith(
+      USER_ID,
+      "Recipes: Lunch & dinner",
+      { mealType: "main course" },
+      expect.objectContaining({ signal: expect.any(Object) }),
+    );
+  });
+
+  it("sends free-form culture alternatives and non-listed allergies to the LLM before saving its exclusions", async () => {
+    const user = userEvent.setup();
+    parseGoal.mockResolvedValue({
+      parsedFilter: {
+        cuisines: ["chinese", "italian"],
+        mealType: "breakfast",
+        intolerances: ["peanut"],
+        excludeIngredients: ["peanuts", "strawberries", "alpha-gal"],
+      },
+    });
+    saveGoal.mockResolvedValue({ success: true });
+    renderGoalEntry();
+
+    await user.click(screen.getByRole("button", { name: "Open recipe filters" }));
+    expect(
+      screen.getByText("Always check each recipe’s ingredient labels and cross-contact information before eating."),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Culture / cuisine"), "Chinese or Italian");
+    await user.type(screen.getByLabelText("Allergies / ingredients to avoid"), "peanut, strawberries, and alpha-gal");
+    await user.click(screen.getByRole("radio", { name: "Dessert" }));
+    await user.click(screen.getByRole("button", { name: "Start swiping" }));
+
+    expect(parseGoal).toHaveBeenCalledWith(
+      "Cuisine or culture preference: Chinese or Italian.\nAllergies or ingredients to avoid: peanut, strawberries, and alpha-gal.",
+      expect.objectContaining({ signal: expect.any(Object) }),
+    );
+    await waitFor(() =>
+      expect(saveGoal).toHaveBeenCalledWith(
+        USER_ID,
+        "Cuisine or culture preference: Chinese or Italian.\nAllergies or ingredients to avoid: peanut, strawberries, and alpha-gal.",
+        {
+          cuisines: ["chinese", "italian"],
+          mealType: "dessert",
+          intolerances: ["peanut"],
+          excludeIngredients: ["peanuts", "strawberries", "alpha-gal"],
+        },
+        expect.objectContaining({ signal: expect.any(Object) }),
+      ),
+    );
+  });
+
+  it("keeps expanded quick picks inside the fixed-height, scrollable recipe filter panel", async () => {
+    const user = userEvent.setup();
+    renderGoalEntry();
+
+    await user.click(screen.getByRole("button", { name: "Open recipe filters" }));
+    await waitFor(() => expect(screen.getByText("Quick picks")).toBeVisible());
+    expect(screen.getByText("Per serving, matched within ±20%.")).toBeVisible();
+    expect(
+      screen.getAllByRole("button", {
+        name: /^(Quick Dinner|High Protein|Plant-Based|Under 30 Minutes|Low Carb|Comfort Food|Family-Friendly|Meal Prep|One-Pot)$/,
+      }),
+    ).toHaveLength(9);
+    expect(screen.queryByRole("button", { name: "Mediterranean" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Low Carb" }));
+
+    expect(screen.getByLabelText("Your food goal")).toHaveValue("Low Carb");
+    await waitFor(() => expect(screen.queryByText("Quick picks")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Open recipe filters" })).toBeInTheDocument();
+  });
+
+  it("blocks an invalid nutrition target before it calls the goal parser", async () => {
+    const user = userEvent.setup();
+    renderGoalEntry();
+    await user.type(screen.getByLabelText("Your food goal"), "dinner");
+    await user.click(screen.getByRole("button", { name: "Open recipe filters" }));
+    await user.type(screen.getByLabelText("Protein"), "501");
+    await user.click(screen.getByRole("button", { name: "Start swiping" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Enter whole-number nutrition targets within the shown ranges.",
+    );
+    expect(parseGoal).not.toHaveBeenCalled();
+    expect(saveGoal).not.toHaveBeenCalled();
+  });
+
   it("locks the form while submitting and ignores a second submission", async () => {
     const parsed = createDeferred();
     const saved = createDeferred();
@@ -132,7 +315,7 @@ describe("GoalEntryPage", () => {
       "true",
     );
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Parsing your goal and tuning your recipe feed...",
+      "Interpreting your craving and tuning your recipe feed...",
     );
 
     parsed.resolve({ parsedFilter: { minProtein_g: 30 } });
@@ -147,7 +330,7 @@ describe("GoalEntryPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("enforces the 1000-character limit in state and exposes the live count", async () => {
+  it("enforces the 1000-character limit without rendering a character counter", async () => {
     parseGoal.mockResolvedValue({ parsedFilter: {} });
     saveGoal.mockResolvedValue({ success: true });
     renderGoalEntry();
@@ -157,9 +340,7 @@ describe("GoalEntryPage", () => {
 
     expect(input).toHaveAttribute("maxlength", "1000");
     expect(input).toHaveValue("x".repeat(1000));
-    expect(screen.getByLabelText("1000 of 1000 characters")).toHaveTextContent(
-      "1000/1000",
-    );
+    expect(screen.queryByText("1000/1000")).not.toBeInTheDocument();
 
     fireEvent.submit(input.closest("form"));
     await waitFor(() =>

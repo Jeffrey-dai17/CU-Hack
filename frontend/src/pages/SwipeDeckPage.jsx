@@ -1,6 +1,14 @@
-import { animate, motion, useMotionValue, useReducedMotion, useTransform } from "framer-motion";
+import {
+  animate,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useTransform,
+} from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import Button from "../components/Button.jsx";
+import BrandLogo from "../components/BrandLogo.jsx";
 import {
   getApiErrorMessage,
   getCurrentGoal,
@@ -350,9 +358,42 @@ function SwipeDeckPage() {
     [currentRecipe, isSwiping],
   );
 
+  useEffect(() => {
+    if (!currentRecipe) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
+          return;
+        }
+      }
+
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        requestSwipe("left");
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        requestSwipe("right");
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentRecipe, requestSwipe]);
+
   const handleSwipeStart = useCallback(() => setIsSwiping(true), []);
   const handleSwipeSettled = useCallback(() => setIsSwiping(false), []);
   const goToGoalEntry = useCallback(() => navigate("/"), [navigate]);
+  const changeGoal = useCallback(
+    () => navigate("/", { state: { returnTo: "/deck" } }),
+    [navigate],
+  );
   const goToLikedRecipes = useCallback(() => navigate("/liked"), [navigate]);
   const retryDeck = useCallback(() => {
     setIsLoading(true);
@@ -366,7 +407,7 @@ function SwipeDeckPage() {
 
   if (isLoading) {
     return (
-      <DeckState eyebrow="Recipe Match" title="Building your deck" busy>
+      <DeckState title="Building your deck" busy>
         Loading recipes that match your food goal...
       </DeckState>
     );
@@ -374,15 +415,15 @@ function SwipeDeckPage() {
 
   if (errorMessage) {
     return (
-      <DeckState eyebrow="Recipe Match" title="Deck unavailable" role="alert" headingRef={stateHeadingRef}>
+      <DeckState title="Deck unavailable" role="alert" headingRef={stateHeadingRef}>
         <p>{errorMessage}</p>
         <div className="deck-state-actions">
-          <button type="button" className="deck-primary-button" onClick={retryDeck}>
+          <Button variant="primary" onClick={retryDeck}>
             Try again
-          </button>
-          <button type="button" className="deck-secondary-button" onClick={goToGoalEntry}>
+          </Button>
+          <Button variant="secondary" onClick={goToGoalEntry}>
             Back to goal
-          </button>
+          </Button>
         </div>
       </DeckState>
     );
@@ -390,11 +431,11 @@ function SwipeDeckPage() {
 
   if (recipes.length === 0 && !hasMore) {
     return (
-      <DeckState eyebrow="No matches found" title="Try a different goal" headingRef={stateHeadingRef}>
+      <DeckState title="Try a different goal" headingRef={stateHeadingRef}>
         <p>No usable recipes were found for this goal. Broaden your filters or try a different craving.</p>
-        <button type="button" className="deck-secondary-button" onClick={goToGoalEntry}>
+        <Button variant="primary" onClick={goToGoalEntry}>
           Set a new goal
-        </button>
+        </Button>
       </DeckState>
     );
   }
@@ -402,15 +443,15 @@ function SwipeDeckPage() {
   if (!currentRecipe) {
     if (loadMoreError) {
       return (
-        <DeckState eyebrow="Recipe Match" title="Couldn't load more matches" role="alert" headingRef={stateHeadingRef}>
+        <DeckState title="Couldn't load more matches" role="alert" headingRef={stateHeadingRef}>
           <p>{loadMoreError}</p>
           <div className="deck-state-actions">
-            <button type="button" className="deck-primary-button" onClick={retryMoreRecipes}>
+            <Button variant="primary" onClick={retryMoreRecipes}>
               Try again
-            </button>
-            <button type="button" className="deck-secondary-button" onClick={goToGoalEntry}>
+            </Button>
+            <Button variant="secondary" onClick={goToGoalEntry}>
               Set a new goal
-            </button>
+            </Button>
           </div>
         </DeckState>
       );
@@ -418,49 +459,62 @@ function SwipeDeckPage() {
 
     if (hasMore || isLoadingMore) {
       return (
-        <DeckState eyebrow="Recipe Match" title="Finding more matches" busy>
+        <DeckState title="Finding more matches" busy>
           Loading the next recipes in your deck...
         </DeckState>
       );
     }
 
     return (
-      <DeckState eyebrow="All caught up" title="You've reached the end of this deck" headingRef={stateHeadingRef}>
+      <DeckState title="You've reached the end of this deck" headingRef={stateHeadingRef}>
         <p>Set a new food goal whenever you want to build a different deck.</p>
-        <button type="button" className="deck-secondary-button" onClick={goToGoalEntry}>
+        <Button variant="primary" onClick={goToGoalEntry}>
           Set a new goal
-        </button>
+        </Button>
       </DeckState>
     );
   }
 
+  const progressPercent =
+    recipes.length > 0
+      ? Math.min(100, Math.max(6, Math.round(((currentIndex + 1) / recipes.length) * 100)))
+      : 0;
+
   return (
     <main className="swipe-deck-page">
       <header className="deck-header">
-        <div>
-          <p className="deck-eyebrow">Recipe Match</p>
+        <div className="deck-header-lead">
+          <BrandLogo className="deck-brand" />
           <h1>Swipe your matches</h1>
           <p className="deck-progress" role="status" aria-live="polite" aria-atomic="true">
             Match {currentIndex + 1}: {currentRecipe.title || "Untitled recipe"}
           </p>
+          <div
+            className="deck-progress-track"
+            aria-hidden="true"
+            style={{ "--deck-progress": `${progressPercent}%` }}
+          >
+            <span className="deck-progress-fill" />
+          </div>
         </div>
         <div className="deck-header-actions">
-          <button
-            type="button"
-            className="deck-secondary-button"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={goToLikedRecipes}
             disabled={isSwiping}
+            leftIcon={<HeartGlyph />}
           >
             Liked recipes
-          </button>
-          <button
-            type="button"
-            className="deck-secondary-button"
-            onClick={goToGoalEntry}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={changeGoal}
             disabled={isSwiping}
           >
             Change goal
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -488,12 +542,39 @@ function SwipeDeckPage() {
         </div>
 
         <div className="deck-actions" aria-label="Swipe actions">
-          <button type="button" className="deck-skip-button" onClick={() => requestSwipe("left")} disabled={isSwiping} aria-label="Skip recipe">
-            <span aria-hidden="true">×</span>
-          </button>
-          <button type="button" className="deck-like-button" onClick={() => requestSwipe("right")} disabled={isSwiping} aria-label="Like recipe">
-            <span aria-hidden="true">♥</span>
-          </button>
+          <motion.button
+            type="button"
+            className="deck-skip-button"
+            onClick={() => requestSwipe("left")}
+            disabled={isSwiping}
+            aria-label="Skip recipe"
+            whileHover={{ y: -3 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: "spring", stiffness: 480, damping: 24 }}
+          >
+            <span className="deck-action-ring" aria-hidden="true" />
+            <span className="deck-action-icon" aria-hidden="true">
+              <CrossGlyph />
+            </span>
+            <span className="deck-action-label">Skip</span>
+          </motion.button>
+
+          <motion.button
+            type="button"
+            className="deck-like-button"
+            onClick={() => requestSwipe("right")}
+            disabled={isSwiping}
+            aria-label="Like recipe"
+            whileHover={{ y: -3 }}
+            whileTap={{ scale: 0.92 }}
+            transition={{ type: "spring", stiffness: 480, damping: 24 }}
+          >
+            <span className="deck-action-ring" aria-hidden="true" />
+            <span className="deck-action-icon" aria-hidden="true">
+              <HeartGlyph />
+            </span>
+            <span className="deck-action-label">Like</span>
+          </motion.button>
         </div>
 
         {isSwiping ? (
@@ -505,9 +586,9 @@ function SwipeDeckPage() {
         {loadMoreError ? (
           <div className="deck-load-more-error" role="alert">
             <p>{loadMoreError}</p>
-            <button type="button" className="deck-secondary-button" onClick={retryMoreRecipes}>
+            <Button variant="secondary" size="sm" onClick={retryMoreRecipes}>
               Retry more matches
-            </button>
+            </Button>
           </div>
         ) : null}
       </section>
@@ -515,11 +596,16 @@ function SwipeDeckPage() {
   );
 }
 
-function DeckState({ eyebrow, title, children, busy = false, role, headingRef }) {
+function DeckState({ title, children, busy = false, role, headingRef }) {
   return (
     <main className="swipe-deck-page swipe-deck-state-page">
-      <section className="deck-state-panel" aria-live={busy ? "polite" : undefined} aria-busy={busy || undefined} role={role}>
-        <p className="deck-eyebrow">{eyebrow}</p>
+      <section
+        className="deck-state-panel"
+        aria-live={busy ? "polite" : undefined}
+        aria-busy={busy || undefined}
+        role={role}
+      >
+        <BrandLogo className="deck-state-brand" />
         <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined}>{title}</h1>
         {typeof children === "string" ? <p>{children}</p> : children}
       </section>
@@ -530,8 +616,20 @@ function DeckState({ eyebrow, title, children, busy = false, role, headingRef })
 function SwipeableRecipeCard({ recipe, swipeRequest, disabled, onSwipeStart, onSwipeComplete, onSwipeSettled }) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-240, 0, 240], [-8, 0, 8]);
+  const likeStampOpacity = useTransform(x, [30, 130], [0, 1]);
+  const skipStampOpacity = useTransform(x, [-130, -30], [1, 0]);
+  const cardGlow = useTransform(
+    x,
+    [-150, 0, 150],
+    [
+      "0 30px 78px rgba(141, 37, 31, 0.42)",
+      "var(--shadow-card)",
+      "0 30px 78px rgba(32, 70, 45, 0.45)",
+    ],
+  );
   const prefersReducedMotion = useReducedMotion();
   const isAnimatingRef = useRef(false);
+  const handledRequestNumberRef = useRef(0);
   const cardRef = useRef(null);
 
   useEffect(() => {
@@ -566,7 +664,15 @@ function SwipeableRecipeCard({ recipe, swipeRequest, disabled, onSwipeStart, onS
   }, [onSwipeComplete, onSwipeSettled, onSwipeStart, prefersReducedMotion, recipe, x]);
 
   useEffect(() => {
-    if (!swipeRequest || swipeRequest.recipeId !== recipe.id || isAnimatingRef.current) return;
+    if (
+      !swipeRequest ||
+      swipeRequest.recipeId !== recipe.id ||
+      swipeRequest.requestNumber === handledRequestNumberRef.current ||
+      isAnimatingRef.current
+    ) {
+      return;
+    }
+    handledRequestNumberRef.current = swipeRequest.requestNumber;
     void flyAway(swipeRequest.direction);
   }, [flyAway, recipe.id, swipeRequest]);
 
@@ -594,9 +700,23 @@ function SwipeableRecipeCard({ recipe, swipeRequest, disabled, onSwipeStart, onS
       initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96, y: 18 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: "easeOut" }}
-      style={{ x, rotate }}
+      style={{ x, rotate, boxShadow: cardGlow }}
       onDragEnd={handleDragEnd}
     >
+      <motion.div
+        className="recipe-card-stamp recipe-card-stamp-like"
+        style={{ opacity: likeStampOpacity }}
+        aria-hidden="true"
+      >
+        Love it
+      </motion.div>
+      <motion.div
+        className="recipe-card-stamp recipe-card-stamp-skip"
+        style={{ opacity: skipStampOpacity }}
+        aria-hidden="true"
+      >
+        Nope
+      </motion.div>
       <RecipeCardContent recipe={recipe} titleId={titleId} />
     </motion.article>
   );
@@ -707,6 +827,30 @@ function RecipeCardImage({ image, title }) {
   }
 
   return <img src={imageUrl} alt={title} className="recipe-card-image" draggable="false" onError={() => setImageFailed(true)} />;
+}
+
+function CrossGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" focusable="false">
+      <path
+        d="M6 6l12 12M18 6L6 18"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function HeartGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="1em" height="1em" focusable="false">
+      <path
+        d="M12 20.5l-1.45-1.32C5.4 14.5 2 11.4 2 7.6 2 4.9 4.1 2.8 6.8 2.8c1.5 0 2.98.7 3.96 1.82L12 5.9l1.24-1.28A5.36 5.36 0 0117.2 2.8C19.9 2.8 22 4.9 22 7.6c0 3.8-3.4 6.9-8.55 11.58L12 20.5z"
+        fill="currentColor"
+      />
+    </svg>
+  );
 }
 
 export default SwipeDeckPage;

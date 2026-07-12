@@ -167,8 +167,12 @@ test("API routes expose the complete frontend contract and persist swipes", asyn
         userId: "  demo-user-1  ",
         rawText: "  vegan, under 500 calories  ",
         parsedFilter: {
+          query: "  ramen  ",
           diet: " Vegan ",
+          cuisines: [" Japanese ", "Italian", "japanese"],
+          mealType: " Main Course ",
           maxCalories: 500,
+          intolerances: [" Peanut ", "peanut", "Shellfish"],
           excludeIngredients: [" peanuts ", "PEANUTS"],
         },
       }),
@@ -181,8 +185,12 @@ test("API routes expose the complete frontend contract and persist swipes", asyn
     assert.equal(savedGoal.headers.get("cache-control"), "no-store");
     assert.equal(savedGoal.body.rawText, "vegan, under 500 calories");
     assert.deepEqual(savedGoal.body.parsedFilter, {
+      query: "ramen",
       maxCalories: 500,
       diet: "vegan",
+      cuisines: ["japanese", "italian"],
+      mealType: "main course",
+      intolerances: ["peanut", "shellfish"],
       excludeIngredients: ["peanuts"],
     });
     assert.match(savedGoal.body.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
@@ -198,8 +206,12 @@ test("API routes expose the complete frontend contract and persist swipes", asyn
     assert.deepEqual(searchCalls, [
       {
         filter: {
+          query: "ramen",
           maxCalories: 500,
           diet: "vegan",
+          cuisines: ["japanese", "italian"],
+          mealType: "main course",
+          intolerances: ["peanut", "shellfish"],
           excludeIngredients: ["peanuts"],
         },
         pagination: { limit: 2, offset: 20 },
@@ -273,6 +285,10 @@ test("goal parsing sanitizes model output and goal saving rejects invalid filter
     parseGoal: async () => ({
       maxCalories: "500",
       diet: " Vegan ",
+      query: " ramen ",
+      cuisines: [" Japanese ", "Italian", "japanese"],
+      mealType: " Dessert ",
+      intolerances: [" Peanut ", "peanut", "Shellfish"],
       excludeIngredients: [" peanuts ", "PEANUTS", 42, ""],
       unsupported: true,
     }),
@@ -280,7 +296,14 @@ test("goal parsing sanitizes model output and goal saving rejects invalid filter
 
   await withTestServer(app, async (baseUrl) => {
     assertResponse(await postJson(baseUrl, "/api/parse-goal", { text: "vegan" }), 200, {
-      parsedFilter: { diet: "vegan", excludeIngredients: ["peanuts"] },
+      parsedFilter: {
+        query: "ramen",
+        diet: "vegan",
+        cuisines: ["japanese", "italian"],
+        mealType: "dessert",
+        intolerances: ["peanut", "shellfish"],
+        excludeIngredients: ["peanuts"],
+      },
     });
 
     const invalidFilters = [
@@ -292,6 +315,11 @@ test("goal parsing sanitizes model output and goal saving rejects invalid filter
       { minProtein_g: -1 },
       { maxReadyTime: 1441 },
       { diet: "carnivore" },
+      { query: "" },
+      { cuisine: "japanese" },
+      { cuisines: ["martian"] },
+      { mealType: "lunch" },
+      { intolerances: ["made up allergen"] },
       { excludeIngredients: Array.from({ length: 21 }, (_, index) => `item-${index}`) },
       { excludeIngredients: [""] },
     ];

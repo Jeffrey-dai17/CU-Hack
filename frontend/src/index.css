@@ -24,6 +24,26 @@
   --radius-lg: 20px;
   --radius-pill: 999px;
   --transition: 180ms ease;
+
+  /* Motion system — shared easings + durations for a cohesive, "spring-loaded" feel. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 140ms;
+  --dur-med: 260ms;
+  --dur-slow: 460ms;
+  --spring: var(--dur-med) var(--ease-out-back);
+
+  /* Interactive elevation tokens. */
+  --shadow-press: 0 4px 12px rgba(33, 29, 19, 0.14);
+  --shadow-hover: 0 22px 46px rgba(33, 29, 19, 0.2);
+  --shadow-glow-green: 0 18px 40px rgba(32, 70, 45, 0.34);
+  --shadow-glow-coral: 0 18px 40px rgba(201, 79, 56, 0.32);
+
+  /* Signature gradients reused across flashy surfaces. */
+  --gradient-green: linear-gradient(135deg, #3c7a52 0%, #20462d 100%);
+  --gradient-coral: linear-gradient(135deg, #e07a5f 0%, #c1452c 100%);
+  --gradient-aurora: linear-gradient(120deg, #315f3f, #397f91, #c28b20, #c94f38);
 }
 
 * {
@@ -71,7 +91,7 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
-:where(button, a, input):focus-visible {
+:where(button, a):focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 3px;
   box-shadow: 0 0 0 6px rgba(255, 250, 240, 0.96);
@@ -91,6 +111,140 @@ main h1[tabindex="-1"]:focus {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/*
+ * Shared motion library.
+ *
+ * Every keyframe below animates properties whose *base* value is already the
+ * final resting state (opacity: 1, no transform). jsdom does not execute CSS
+ * animations, so getComputedStyle still reports the resting value — which keeps
+ * `toBeVisible()` assertions honest while real browsers get the full effect.
+ */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+  }
+
+  60% {
+    transform: translateY(-2px) scale(1.02);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes shine-sweep {
+  from {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+
+  to {
+    transform: translateX(240%) skewX(-18deg);
+  }
+}
+
+@keyframes gradient-pan {
+  from {
+    background-position: 0% 50%;
+  }
+
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes ambient-background {
+  from {
+    background-position: 0% 45%;
+  }
+
+  to {
+    background-position: 100% 55%;
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.82);
+  }
+
+  70% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes live-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(201, 79, 56, 0.45);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(201, 79, 56, 0);
+  }
+}
+
+/* Reusable scroll/entrance helper. Base state is fully visible for jsdom + no-JS. */
+.reveal {
+  animation: rise-in var(--dur-slow) var(--ease-out-expo) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

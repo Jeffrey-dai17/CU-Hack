@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -44,18 +44,20 @@ describe("LikedRecipesPage", () => {
     window.sessionStorage.clear();
   });
 
-  it("shows an empty state and a way back to the deck when nothing is liked", async () => {
-    const user = userEvent.setup();
+  it("shows the seeded demo favourite when nothing else is liked", () => {
     renderLikedPage();
 
-    expect(screen.getByRole("heading", { name: "Your liked recipes" })).toBeInTheDocument();
-    expect(screen.getByText("Nothing liked yet this session.")).toBeVisible();
-    expect(
-      screen.getByText("Swipe right on a recipe you like and it'll show up here."),
-    ).toBeVisible();
-
-    await user.click(screen.getByRole("button", { name: "Start swiping" }));
-    expect(screen.getByRole("heading", { name: "Deck destination" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Liked Recipes" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Dishly home" })).toHaveAttribute("href", "/");
+    expect(document.querySelector(".liked-brand img")).toHaveAttribute(
+      "src",
+      "/images/dishly-logo-hero.png",
+    );
+    expect(screen.queryByText(/you've liked this session/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /5-minute Ricotta Garlic Herb Dip/ })).toHaveAttribute(
+      "href",
+      "/recipe/1697679",
+    );
   });
 
   it("lists liked recipes newest-first with their nutrition summary", () => {
@@ -64,13 +66,27 @@ describe("LikedRecipesPage", () => {
 
     renderLikedPage();
 
-    expect(screen.getByText("2 recipes you've liked this session.")).toBeVisible();
-    const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(2);
+    const links = within(screen.getByRole("region", { name: "Liked recipes" })).getAllByRole("link");
+    expect(links).toHaveLength(3);
     expect(links[0]).toHaveTextContent("Ginger Tofu Plate");
     expect(links[1]).toHaveTextContent("Lemon Chicken Bowl");
+    expect(links[2]).toHaveTextContent("5-minute Ricotta Garlic Herb Dip");
     expect(links[0]).toHaveAttribute("href", "/recipe/9002");
-    expect(screen.getByText("510 kcal")).toBeVisible();
+    expect(screen.getByText("510 kcal for 1 person")).toBeVisible();
+    expect(screen.getByText("240 kcal for 1 person")).toBeVisible();
+  });
+
+  it("scales calorie totals for the selected number of people", async () => {
+    const user = userEvent.setup();
+    addLikedRecipe(USER_ID, RECIPE_A);
+
+    renderLikedPage();
+
+    const peopleInput = screen.getByRole("spinbutton", { name: "Number of people" });
+    await user.clear(peopleInput);
+    await user.type(peopleInput, "2");
+
+    expect(screen.getByText("480 kcal for 2 people")).toBeVisible();
   });
 
   it("links each card to its recipe detail page with route state for an instant render", async () => {

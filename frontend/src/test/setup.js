@@ -35,4 +35,29 @@ class ResizeObserverStub {
 }
 
 globalThis.ResizeObserver = ResizeObserverStub;
+
+// jsdom has no IntersectionObserver. Report every observed target as fully
+// in view so Framer Motion `whileInView` reveals settle to their final state
+// instead of leaving scroll-revealed content stuck at its hidden keyframe.
+class IntersectionObserverStub {
+  constructor(callback) {
+    this.callback = callback;
+  }
+
+  observe(target) {
+    this.callback(
+      [{ isIntersecting: true, intersectionRatio: 1, target }],
+      this,
+    );
+  }
+
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+
+globalThis.IntersectionObserver = IntersectionObserverStub;
+window.IntersectionObserver = IntersectionObserverStub;
 window.scrollTo = vi.fn();

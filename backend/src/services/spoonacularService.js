@@ -216,6 +216,11 @@ function normalizeDiets(value) {
   return diets;
 }
 
+function normalizeQualityMetric(value) {
+  const number = typeof value === "number" || typeof value === "string" ? Number(value) : NaN;
+  return Number.isFinite(number) && number >= 0 ? number : -1;
+}
+
 function stripHtml(value) {
   return String(value || "")
     .replace(/<br\s*\/?>/gi, "\n")
@@ -332,6 +337,23 @@ function normalizeRecipe(item) {
   };
 }
 
+function compareRecipeQuality(left, right) {
+  const fields = [
+    [Number(Boolean(left.recipe.image)), Number(Boolean(right.recipe.image))],
+    [normalizeQualityMetric(left.item.spoonacularScore), normalizeQualityMetric(right.item.spoonacularScore)],
+    [normalizeQualityMetric(left.item.aggregateLikes), normalizeQualityMetric(right.item.aggregateLikes)],
+    [normalizeQualityMetric(left.item.healthScore), normalizeQualityMetric(right.item.healthScore)],
+    [Number(Boolean(left.item.veryPopular)), Number(Boolean(right.item.veryPopular))],
+    [Number(left.recipe.instructions.length > 0), Number(right.recipe.instructions.length > 0)],
+  ];
+
+  for (const [leftValue, rightValue] of fields) {
+    if (leftValue !== rightValue) return rightValue - leftValue;
+  }
+
+  return left.index - right.index;
+}
+
 function hasMoreProviderResults(data, { limit, offset }) {
   const nextOffset = offset + limit;
   if (nextOffset > MAX_SEARCH_OFFSET) return false;
@@ -384,12 +406,23 @@ async function searchRecipePage(parsedFilter = {}, options = {}) {
     addRecipeInstructions: "true",
     addRecipeNutrition: "true",
     fillIngredients: "true",
+    instructionsRequired: "true",
+    sort: "popularity",
+    sortDirection: "desc",
   });
 
+  if (filter.query !== undefined) params.set("query", filter.query);
+  if (filter.cuisines?.length) params.set("cuisine", filter.cuisines.join(","));
+  if (filter.mealType !== undefined) params.set("type", filter.mealType);
+  if (filter.minCalories !== undefined) params.set("minCalories", String(filter.minCalories));
   if (filter.maxCalories !== undefined) params.set("maxCalories", String(filter.maxCalories));
   if (filter.maxReadyTime !== undefined) params.set("maxReadyTime", String(filter.maxReadyTime));
   if (filter.diet !== undefined) params.set("diet", filter.diet);
   if (filter.minProtein_g !== undefined) params.set("minProtein", String(filter.minProtein_g));
+  if (filter.maxProtein_g !== undefined) params.set("maxProtein", String(filter.maxProtein_g));
+  if (filter.minCarbs_g !== undefined) params.set("minCarbs", String(filter.minCarbs_g));
+  if (filter.maxCarbs_g !== undefined) params.set("maxCarbs", String(filter.maxCarbs_g));
+  if (filter.intolerances?.length) params.set("intolerances", filter.intolerances.join(","));
   if (filter.excludeIngredients?.length) {
     params.set("excludeIngredients", filter.excludeIngredients.join(","));
   }
@@ -404,7 +437,12 @@ async function searchRecipePage(parsedFilter = {}, options = {}) {
   }
 
   return {
-    recipes: data.results.slice(0, limit).map(normalizeRecipe).filter(Boolean),
+    recipes: data.results
+      .map((item, index) => ({ item, index, recipe: normalizeRecipe(item) }))
+      .filter((candidate) => candidate.recipe)
+      .sort(compareRecipeQuality)
+      .slice(0, limit)
+      .map((candidate) => candidate.recipe),
     hasMore: hasMoreProviderResults(data, { limit, offset }),
   };
 }

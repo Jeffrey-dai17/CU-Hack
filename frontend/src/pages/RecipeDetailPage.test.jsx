@@ -80,7 +80,7 @@ async function renderLoadedRecipe(recipe = COMPLETE_RECIPE) {
 describe("RecipeDetailPage", () => {
   beforeEach(() => {
     getRecipeById.mockReset();
-    document.title = "Recipe Match";
+    document.title = "dishly";
   });
 
   it("fetches the route id with an abort signal and renders the returned recipe", async () => {
@@ -358,14 +358,18 @@ describe("RecipeDetailPage", () => {
     expect(screen.queryByAltText("Grilled Chicken & Quinoa Bowl")).not.toBeInTheDocument();
   });
 
-  it("sets a recipe-specific document title and focuses the loaded heading", async () => {
+  it("keeps the lowercase browser title and focuses the loaded heading", async () => {
     await renderLoadedRecipe();
 
     const heading = screen.getByRole("heading", {
       name: "Grilled Chicken & Quinoa Bowl",
       level: 1,
     });
-    expect(document.title).toBe("Grilled Chicken & Quinoa Bowl | Recipe Match");
+    expect(document.title).toBe("dishly");
+    expect(document.querySelector(".recipe-detail-brand img")).toHaveAttribute(
+      "src",
+      "/images/dishly-logo-hero.png",
+    );
     await waitFor(() => expect(heading).toHaveFocus());
   });
 

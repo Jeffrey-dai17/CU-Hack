@@ -1,8 +1,38 @@
+import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { getRecipeById } from "../api/client.js";
+import Button from "../components/Button.jsx";
+import BrandLogo from "../components/BrandLogo.jsx";
 import { getSafeHttpUrl, isUsableRecipe, normalizeRecipeId } from "../utils/recipe.js";
 import "./RecipeDetailPage.css";
+
+// Shared scroll-reveal preset. Sections enter from the side once as they enter view.
+const REVEAL = {
+  initial: { opacity: 0, x: 30 },
+  whileInView: { opacity: 1, x: 0 },
+  viewport: { once: true, amount: 0.2 },
+  transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] },
+};
+
+// Named variants for staggered children (diet chips, nutrition stat cards).
+const STAGGER_CONTAINER = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
+};
+
+const STAGGER_ITEM = {
+  hidden: { opacity: 0, x: 14 },
+  show: { opacity: 1, x: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } },
+};
+
+// Stat cards fade only — no transform. A transformed element establishes a
+// containing block that makes Chromium count the (intentionally huge) number in
+// `scrollWidth`, which the giant-number containment e2e guards against.
+const STAT_FADE = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
+};
 
 const MAX_PUBLIC_ERROR_LENGTH = 200;
 
@@ -205,7 +235,7 @@ function RecipeDetailPage() {
           aria-live="polite"
           aria-labelledby="recipe-loading-title"
         >
-          <p className="recipe-detail-eyebrow">Recipe Match</p>
+          <p className="recipe-detail-eyebrow">Dishly</p>
           <h1 id="recipe-loading-title">Loading your recipe</h1>
           <p>Getting the full nutrition details ready...</p>
         </section>
@@ -228,13 +258,9 @@ function RecipeDetailPage() {
           <p>{errorMessage || "This recipe is unavailable."}</p>
           <div className="recipe-detail-state-actions">
             {recipeId ? (
-              <button
-                className="recipe-detail-primary-link recipe-detail-retry-button"
-                type="button"
-                onClick={retryRecipe}
-              >
+              <Button className="recipe-detail-retry-button" onClick={retryRecipe}>
                 Try again
-              </button>
+              </Button>
             ) : null}
             <Link className="recipe-detail-secondary-link" to="/deck">
               <span aria-hidden="true">&larr;</span>
@@ -273,26 +299,32 @@ function LoadedRecipe({ recipe }) {
   };
 
   useEffect(() => {
-    document.title = `${title} | Recipe Match`;
+    document.title = "dishly";
     headingRef.current?.focus({ preventScroll: true });
   }, [title]);
 
   return (
     <main className="recipe-detail-page">
       <div className="recipe-detail-shell">
-        <nav className="recipe-detail-nav" aria-label="Recipe navigation">
+        <motion.nav
+          className="recipe-detail-nav"
+          aria-label="Recipe navigation"
+          initial={{ opacity: 0, x: -28 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        >
           <Link className="recipe-detail-back-link" to="/deck">
             <span aria-hidden="true">&larr;</span>
             Keep swiping
           </Link>
-          <span className="recipe-detail-brand">Recipe Match</span>
-        </nav>
+          <BrandLogo className="recipe-detail-brand" />
+        </motion.nav>
 
         <article className="recipe-detail-article">
           <RecipeHeroImage key={`${recipe.id}-${recipe.image || "no-image"}`} image={recipe.image} title={title} />
 
           <div className="recipe-detail-content">
-            <header className="recipe-detail-header">
+            <motion.header className="recipe-detail-header" {...REVEAL}>
               <p className="recipe-detail-eyebrow">Your recipe match</p>
               <h1 ref={headingRef} tabIndex="-1">
                 {title}
@@ -301,45 +333,62 @@ function LoadedRecipe({ recipe }) {
               {metadata ? <p className="recipe-detail-metadata">{metadata}</p> : null}
 
               {diets.length > 0 ? (
-                <ul className="recipe-detail-diets" aria-label="Recipe diets">
+                <motion.ul
+                  className="recipe-detail-diets"
+                  aria-label="Recipe diets"
+                  variants={STAGGER_CONTAINER}
+                  initial="hidden"
+                  whileInView="show"
+                  viewport={{ once: true, amount: 0.4 }}
+                >
                   {diets.map((diet) => (
-                    <li key={diet}>{diet}</li>
+                    <motion.li key={diet} variants={STAGGER_ITEM}>
+                      {diet}
+                    </motion.li>
                   ))}
-                </ul>
+                </motion.ul>
               ) : null}
-            </header>
+            </motion.header>
 
-            <section
+            <motion.section
               className="recipe-detail-nutrition"
               aria-labelledby="nutrition-title"
               aria-describedby="nutrition-serving-note"
+              {...REVEAL}
             >
               <div className="recipe-detail-nutrition-heading">
                 <p id="nutrition-serving-note">Nutrition per serving</p>
                 <h2 id="nutrition-title">The numbers behind your match</h2>
               </div>
 
-              <dl className="recipe-detail-nutrition-grid">
+              <motion.dl
+                className="recipe-detail-nutrition-grid"
+                variants={STAGGER_CONTAINER}
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: true, amount: 0.3 }}
+              >
                 {NUTRITION_STATS.map((stat) => {
                   const reading = getNutritionReading(nutrition[stat.key]);
 
                   return (
-                    <div
+                    <motion.div
                       className={`recipe-detail-stat recipe-detail-stat-${stat.tone}`}
                       key={stat.key}
+                      variants={STAT_FADE}
                     >
                       <dt>{stat.label}</dt>
                       <dd>
                         <strong>{reading}</strong>
                         {reading !== "N/A" ? <span>{stat.unit}</span> : null}
                       </dd>
-                    </div>
+                    </motion.div>
                   );
                 })}
-              </dl>
-            </section>
+              </motion.dl>
+            </motion.section>
 
-            <div className="recipe-detail-written-recipe">
+            <motion.div className="recipe-detail-written-recipe" {...REVEAL}>
               <RecipeTextSection
                 title="Ingredients"
                 emptyText="Ingredients unavailable for this recipe."
@@ -351,9 +400,9 @@ function LoadedRecipe({ recipe }) {
                 items={instructions}
                 ordered
               />
-            </div>
+            </motion.div>
 
-            <footer className="recipe-detail-actions">
+            <motion.footer className="recipe-detail-actions" {...REVEAL}>
               {sourceUrl ? (
                 <a
                   className="recipe-detail-source-link"
@@ -372,7 +421,7 @@ function LoadedRecipe({ recipe }) {
               <Link className="recipe-detail-secondary-link" to="/deck">
                 Back to recipe deck
               </Link>
-            </footer>
+            </motion.footer>
           </div>
         </article>
       </div>

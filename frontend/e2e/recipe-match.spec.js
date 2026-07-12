@@ -73,6 +73,7 @@ async function installApiFixtures(
       parsedFilter: { maxReadyTime: 30, minProtein_g: 30 },
       updatedAt: "2026-07-11T16:00:00.000Z",
     },
+    parsedFilter = { diet: "vegan", maxReadyTime: 30, minProtein_g: 30 },
   } = {},
 ) {
   const observed = {
@@ -101,7 +102,7 @@ async function installApiFixtures(
       const payload = request.postDataJSON();
       observed.parsedGoals.push(payload);
       await fulfillJson(route, {
-        parsedFilter: { diet: "vegan", maxReadyTime: 30, minProtein_g: 30 },
+        parsedFilter,
       });
       return;
     }
@@ -181,8 +182,9 @@ test("completes goal entry, opens the exact liked card, and renders its full nut
   const observed = await installApiFixtures(page);
 
   await page.goto("/");
-  await expect(page).toHaveTitle("Recipe Match");
-  await expect(page.getByRole("heading", { name: "What are you in the mood for today?" })).toBeVisible();
+  await expect(page).toHaveTitle("dishly");
+  await expect(page.getByRole("link", { name: "Dishly home" })).toBeVisible();
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute("href", "/images/dishly-icon.png");
   expect(observed.apiCalls).toEqual([]);
 
   await page.getByRole("textbox", { name: "Your food goal" }).fill("vegan, high protein, under 30 minutes");
@@ -235,6 +237,148 @@ test("completes goal entry, opens the exact liked card, and renders its full nut
   expect(observed.recipeQueries).toHaveLength(1);
 });
 
+test("builds a deck from nutrition targets without requiring a typed goal", async ({ page }) => {
+  const observed = await installApiFixtures(page);
+
+  await page.goto("/");
+  await expect
+    .poll(async () => {
+      const [heroLogoBounds, heroSearchBounds] = await Promise.all([
+        page.locator(".goal-entry-hero-brand").boundingBox(),
+        page.locator(".goal-entry-row").boundingBox(),
+      ]);
+
+      return Boolean(
+        heroLogoBounds &&
+          heroSearchBounds &&
+          Math.abs(heroLogoBounds.x - heroSearchBounds.x) <= 1 &&
+          heroLogoBounds.y + heroLogoBounds.height < heroSearchBounds.y,
+      );
+    })
+    .toBe(true);
+  await expect(page.locator(".goal-entry-hero-brand img")).toHaveAttribute(
+    "src",
+    "/images/dishly-logo-hero.png",
+  );
+  const logoCornerAlpha = await page.evaluate(async () => {
+    const image = document.querySelector(".goal-entry-hero-brand img");
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext("2d");
+    context.drawImage(image, 0, 0);
+
+    return [
+      context.getImageData(0, 0, 1, 1).data[3],
+      context.getImageData(canvas.width - 1, 0, 1, 1).data[3],
+      context.getImageData(0, canvas.height - 1, 1, 1).data[3],
+      context.getImageData(canvas.width - 1, canvas.height - 1, 1, 1).data[3],
+    ];
+  });
+  expect(logoCornerAlpha).toEqual([0, 0, 0, 0]);
+  const closedPanelBounds = await page.locator(".goal-entry-panel").boundingBox();
+  expect(closedPanelBounds).not.toBeNull();
+  await page.getByRole("button", { name: "Open recipe filters" }).click();
+  await expect(page.getByText("Per serving, matched within ±20%.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Quick Dinner" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mediterranean" })).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const [rowBounds, filterBounds] = await Promise.all([
+        page.locator(".goal-entry-row").boundingBox(),
+        page.locator(".nutrition-filter").boundingBox(),
+      ]);
+
+      return Boolean(
+        rowBounds &&
+          filterBounds &&
+          Math.abs(filterBounds.x - rowBounds.x) <= 1 &&
+          Math.abs(filterBounds.width - rowBounds.width) <= 1,
+      );
+    })
+    .toBe(true);
+  await expect
+    .poll(async () => (await page.locator(".goal-entry-panel").boundingBox())?.y ?? Number.POSITIVE_INFINITY)
+    .toBeLessThan(closedPanelBounds.y - 10);
+  const openFilterBounds = await page.locator(".nutrition-filter").boundingBox();
+  expect(openFilterBounds).not.toBeNull();
+  expect(openFilterBounds.y + openFilterBounds.height).toBeLessThanOrEqual(page.viewportSize().height);
+  const filterScrollState = await page.locator(".nutrition-filter").evaluate((panel) => ({
+    clientHeight: panel.clientHeight,
+    overflowY: getComputedStyle(panel).overflowY,
+    scrollHeight: panel.scrollHeight,
+    scrollbarWidth: getComputedStyle(panel).scrollbarWidth,
+  }));
+  expect(filterScrollState).toMatchObject({ overflowY: "auto", scrollbarWidth: "thin" });
+  expect(filterScrollState.scrollHeight).toBeGreaterThan(filterScrollState.clientHeight);
+  const nutritionFocusStyle = await page.getByRole("spinbutton", { name: "Protein" }).evaluate((input) => {
+    input.focus();
+    return {
+      inputBoxShadow: getComputedStyle(input).boxShadow,
+      controlBackground: getComputedStyle(input.parentElement).backgroundColor,
+    };
+  });
+  expect(nutritionFocusStyle.inputBoxShadow).toBe("none");
+  expect(nutritionFocusStyle.controlBackground).not.toMatch(/rgb\(255,\s*250,\s*240\)/);
+  await page.getByRole("spinbutton", { name: "Calories" }).fill("500");
+  await page.getByRole("spinbutton", { name: "Protein" }).fill("40");
+  await expect(page.getByRole("button", { name: "Start swiping" })).toBeEnabled();
+  await page.getByRole("button", { name: "Start swiping" }).click();
+
+  await expect(page).toHaveURL(/\/deck$/);
+  expect(observed.parsedGoals).toEqual([]);
+  expect(observed.savedGoals).toEqual([
+    {
+      userId: "demo-user-1",
+      rawText: "Recipes around 500 calories, 40g protein per serving",
+      parsedFilter: {
+        minCalories: 400,
+        maxCalories: 600,
+        minProtein_g: 32,
+        maxProtein_g: 48,
+      },
+    },
+  ]);
+});
+
+test("interprets multiple cultures and a non-listed allergy before building a deck", async ({ page }) => {
+  const parsedFilter = {
+    cuisines: ["chinese", "italian"],
+    intolerances: ["peanut"],
+    excludeIngredients: ["peanut", "strawberries", "alpha-gal"],
+  };
+  const observed = await installApiFixtures(page, { parsedFilter });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open recipe filters" }).click();
+  await page.getByLabel("Culture / cuisine").fill("Chinese or Italian");
+  await page.getByLabel("Allergies / ingredients to avoid").fill("peanut, strawberries, alpha-gal");
+  await page.getByRole("radio", { name: "Lunch & dinner" }).click();
+  await page.getByRole("button", { name: "Start swiping" }).click();
+
+  await expect(page).toHaveURL(/\/deck$/);
+  expect(observed.parsedGoals).toEqual([
+    {
+      text:
+        "Cuisine or culture preference: Chinese or Italian.\nAllergies or ingredients to avoid: peanut, strawberries, alpha-gal.",
+    },
+  ]);
+  expect(observed.savedGoals).toEqual([
+    {
+      userId: "demo-user-1",
+      rawText:
+        "Cuisine or culture preference: Chinese or Italian.\nAllergies or ingredients to avoid: peanut, strawberries, alpha-gal.",
+      parsedFilter: {
+        cuisines: ["chinese", "italian"],
+        mealType: "main course",
+        intolerances: ["peanut"],
+        excludeIngredients: ["peanut", "strawberries", "alpha-gal"],
+      },
+    },
+  ]);
+});
+
 test("keeps the reliable deck controls inside a 1366 by 768 laptop viewport", async ({
   page,
 }) => {
@@ -248,6 +392,19 @@ test("keeps the reliable deck controls inside a 1366 by 768 laptop viewport", as
   expect(actionsBox.y).toBeGreaterThanOrEqual(0);
   expect(actionsBox.y + actionsBox.height).toBeLessThanOrEqual(768);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+test("returns to the active deck after opening change goal", async ({ page }) => {
+  await installApiFixtures(page);
+  await page.goto("/deck");
+  await expect(page.getByRole("status")).toContainText("Match 1: Lemon Chicken Bowl");
+
+  await page.getByRole("button", { name: "Change goal" }).click();
+  await expect(page.getByRole("button", { name: "Back to deck" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to deck" }).click();
+
+  await expect(page).toHaveURL(/\/deck$/);
+  await expect(page.getByRole("status")).toContainText("Match 1: Lemon Chicken Bowl");
 });
 
 for (const viewport of [
@@ -272,7 +429,13 @@ for (const viewport of [
     });
 
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: /What are you in the mood/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Dishly home" })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.getByRole("button", { name: "Open recipe filters" }).click();
+    await page.locator(".nutrition-filter").evaluate((panel) => {
+      panel.scrollTop = panel.scrollHeight;
+    });
+    await expect(page.getByRole("button", { name: "One-Pot" })).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
     await page.goto("/deck");
@@ -368,9 +531,9 @@ test("shows accessible fallbacks when deck and detail images fail", async ({ pag
 test("renders a useful wildcard route and returns to goal entry", async ({ page }) => {
   await page.goto("/this-route-does-not-exist");
 
-  await expect(page).toHaveTitle("Page Not Found | Recipe Match");
+  await expect(page).toHaveTitle("dishly");
   await expect(page.getByRole("heading", { name: "This page is not on the menu" })).toBeVisible();
   await page.getByRole("link", { name: "Go to goal entry" }).click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: /What are you in the mood/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Dishly home" })).toBeVisible();
 });

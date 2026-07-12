@@ -49,6 +49,22 @@ export function formatCalories(value) {
   return isUsableNumber(value) ? `${Math.round(value)} kcal` : "Calories N/A";
 }
 
+/** Formats a recipe's total calories for the selected number of people. */
+export function formatCaloriesForPeople(calories, servings, people = 1) {
+  if (!isUsableNumber(calories)) {
+    return "Calories N/A";
+  }
+
+  const roundedServings = isUsableNumber(servings) ? Math.round(servings) : 0;
+  const roundedPeople = isUsableNumber(people) ? Math.round(people) : 0;
+
+  if (roundedServings <= 0 || roundedPeople <= 0) {
+    return formatCalories(calories);
+  }
+
+  return formatCalories((calories / roundedServings) * roundedPeople);
+}
+
 export function formatMacro(value) {
   return isUsableNumber(value) ? `${Math.round(value)}g` : "N/A";
 }
